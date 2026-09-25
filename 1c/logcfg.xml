@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Технологический журнал 1С: долгие запросы к MS SQL с текстом SQL, местом в коде и планом.
+  Файл кладут в каталог conf платформы (например, C:\Program Files\1cv8\conf\logcfg.xml).
+  Изменения подхватываются примерно в течение минуты.
+  Для PostgreSQL замените DBMSSQL на DBPOSTGRS.
+  ВНИМАНИЕ: единицы duration зависят от версии платформы (в современных 8.3 — микросекунды,
+  в старых — десятитысячные доли секунды). Проверьте по записям своего журнала.
+  <plansql/> заметно нагружает СУБД — включать ненадолго, потом удалить/переименовать файл.
+-->
+<config xmlns="http://v8.1c.ru/v8/tech-log">
+  <log location="D:\1C_TechLog\LongQueries" history="24">
+    <event>
+      <eq property="name" value="DBMSSQL"/>
+      <eq property="p:processName" value="MyBase1C"/>
+      <ge property="duration" value="1000000"/>
+    </event>
+    <event>
+      <eq property="name" value="SDBL"/>
+      <eq property="p:processName" value="MyBase1C"/>
+      <ge property="duration" value="1000000"/>
+    </event>
+    <property name="all"/>
+  </log>
+  <plansql/>
+</config>
