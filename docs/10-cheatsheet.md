@@ -63,6 +63,7 @@
 48. **Sort / Hash Aggregate** блокирующие: не отдают строк до конца входа. **Spill** — нехватка гранта, данные ушли в tempdb (жёлтый треугольник, только actual).
 49. **Memory grant** — память под Sort/Hash по оценке, выдаётся до старта. Мал → spill, велик → `RESOURCE_SEMAPHORE` у других.
 50. **Stream Aggregate** — отсортированный вход, без памяти. **Hash Aggregate** — любой вход, память.
+50а. **ORDER BY** без индекса — Sort / Top N Sort (блокирующий, грант, spill). С индексом, упорядоченным по нужному ключу после равенств WHERE (с учётом ASC/DESC), — Ordered Scan/Seek без Sort. **GROUP BY**: Stream Aggregate (нужен порядок: из индекса бесплатно или через Sort) или Hash Aggregate (память). Порядок столбцов в GROUP BY не важен, `MIN/MAX` — Top (1) по индексу. Индекс должен покрывать запрос, иначе выигрывает скан + Sort/Hash (кроме `TOP N`).
 51. **Spool** — кэш поддерева во worktable. **Index Spool** — «не хватает индекса». Eager Spool при UPDATE — Halloween protection.
 52. Параллельный план, если стоимость > **cost threshold** (5) и MAXDOP > 1. Обмены: **Distribute / Repartition / Gather Streams**. MAXDOP — потоков на ветку.
 53. PlanAffectingConvert, ColumnsWithNoStatistics, SpillToTempDb, MemoryGrant (Excessive), NoJoinPredicate, UnmatchedIndexes, Missing Index.

@@ -1,6 +1,6 @@
 # Оптимизация запросов MS SQL Server: профайлер, план запроса, специфика 1С
 
-Методичка для подготовки к аттестации «Умение оптимизации запросов. Профайлер, план запроса». Покрывает 83 опорных вопроса: от устройства страниц и B-деревьев до разбора медленного проведения документа 1С. К ответам приложены схемы, демонстрационные SQL-скрипты и настройка технологического журнала.
+Методичка для подготовки к аттестации «Умение оптимизации запросов. Профайлер, план запроса». Покрывает 83 опорных вопроса и дополнительный вопрос 50а (ORDER BY и агрегация): от устройства страниц и B-деревьев до разбора медленного проведения документа 1С. К ответам приложены схемы, демонстрационные SQL-скрипты и настройка технологического журнала.
 
 **Как пользоваться:**
 - у каждого вопроса есть блок **«Кратко»** — ответ для аттестации в 2–4 предложения, ниже — подробности, примеры и таблицы;
@@ -18,12 +18,12 @@
 | [2. Путь запроса](docs/02-query-pipeline.md) | 11–17 | Parser, algebrizer, кэш планов, перекомпиляция, ad hoc / prepared / процедуры, параметризация, `sp_executesql` |
 | [3. Оптимизатор](docs/03-optimizer.md) | 18–28 | CBO и RBO, стоимость, фазы оптимизации, simplification, Memo, логические и физические операторы, SARGable, неявные преобразования, хинты |
 | [4. Статистика и кардинальность](docs/04-statistics.md) | 29–39 | Заголовок, плотность, гистограмма, автообновление, FULLSCAN/SAMPLE, восходящий ключ, CE 70 и 120, `#temp` и `@table`, ошибки оценки |
-| [5. Операторы плана](docs/05-plans-operators.md) | 40–55 | Estimated/Actual, Scan и Seek, Key Lookup, Seek Predicate, NL/Merge/Hash, Sort, spill, memory grant, агрегаты, Spool, параллелизм, предупреждения, Missing Index |
+| [5. Операторы плана](docs/05-plans-operators.md) | 40–55, 50а | Estimated/Actual, Scan и Seek, Key Lookup, Seek Predicate, NL/Merge/Hash, Sort, spill, memory grant, агрегаты, ORDER BY/GROUP BY и индексы, Spool, параллелизм, предупреждения, Missing Index |
 | [6. Параметры и кэш планов](docs/06-params-cache.md) | 56–60 | Parameter sniffing: диагностика и лечение, DMV, Query Store |
 | [7. Профайлер, трассы, метрики](docs/07-profiler-metrics.md) | 61–67 | Profiler, серверная трасса, Extended Events, Duration/CPU/Reads, STATISTICS IO/TIME, ожидания, блокировки |
 | [8. Специфика 1С](docs/08-1c-specifics.md) | 68–78 | Трансляция в SQL, имена таблиц, ТЖ и plansql, виртуальные таблицы, ВТ, составные типы, ИЛИ, RLS, итоги регистров, индексы объектов, файловый и клиент-серверный вариант |
 | [9. Практические задания](docs/09-practice.md) | 79–83 | Разбор типовых задач с ходом рассуждения |
-| [Шпаргалка](docs/10-cheatsheet.md) | 1–83 | Короткие ответы |
+| [Шпаргалка](docs/10-cheatsheet.md) | 1–83, 50а | Короткие ответы |
 
 ## Структура репозитория
 
@@ -54,6 +54,7 @@
 | [`10_index_maintenance_audit.sql`](sql/10_index_maintenance_audit.sql) | любая | Фрагментация, использование индексов, Missing Index, состав индексов | 7, 54, 77 |
 | [`11_temp_table_vs_table_variable.sql`](sql/11_temp_table_vs_table_variable.sql) | StatsDemo | Оценки для `@table` (до и после 2019) и `#temp` | 38 |
 | [`12_extended_events_long_queries.sql`](sql/12_extended_events_long_queries.sql) | — | XE-сессия для долгих запросов 1С и её разбор | 61–63, 69 |
+| [`13_order_by_group_by_demo.sql`](sql/13_order_by_group_by_demo.sql) | SortAggDemo | Когда индекс убирает Sort, Top N Sort, row goal, Stream/Hash Aggregate, MIN/MAX через Top 1, DISTINCT, покрытие | 50а, 48–50 |
 
 ## Примечания к исходным материалам
 
