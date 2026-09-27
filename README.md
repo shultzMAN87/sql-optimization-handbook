@@ -57,6 +57,7 @@
 | [`12_extended_events_long_queries.sql`](sql/12_extended_events_long_queries.sql) | — | XE-сессия для долгих запросов 1С и её разбор | 61–63, 69 |
 | [`13_order_by_group_by_demo.sql`](sql/13_order_by_group_by_demo.sql) | SortAggDemo | Когда индекс убирает Sort, Top N Sort, row goal, Stream/Hash Aggregate, MIN/MAX через Top 1, DISTINCT, покрытие | 50а, 48–50 |
 | [`14_row_overflow_lob_demo.sql`](sql/14_row_overflow_lob_demo.sql) | LobDemo | ROW_OVERFLOW и LOB: когда и что выносится, lob logical reads, `large value types out of row`, дерево значения 1 МБ, `.WRITE` | 1, 1а |
+| [`15_negation_filtered_index_demo.sql`](sql/15_negation_filtered_index_demo.sql) | NegationDemo | Отрицания `<>`, `NOT IN`, `NOT LIKE`: диапазоны в Seek Predicates, когда Seek и когда Scan, фильтрованный индекс, UnmatchedIndexes | 26, 53 |
 
 ## Примечания к исходным материалам
 
