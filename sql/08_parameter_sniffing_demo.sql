@@ -84,3 +84,47 @@ EXEC dbo.GetOrders 42; EXEC dbo.GetOrders 1;   -- оба: только Index See
 GO
 SET STATISTICS IO OFF;
 GO
+
+
+/* =====================================================================
+   БЛОК 5. sp_executesql: когда план переиспользуется, а когда нет (вопрос 15)
+   ===================================================================== */
+USE StatsDemo;
+GO
+-- Очистить планы только этой базы (ТЕСТОВЫЙ сервер!)
+ALTER DATABASE SCOPED CONFIGURATION CLEAR PROCEDURE_CACHE;
+GO
+-- 5.1 Разные ЗНАЧЕНИЯ, одинаковые текст и объявление -> один план, usecounts = 3
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE CustomerID = @c', N'@c int', @c = 42;
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE CustomerID = @c', N'@c int', @c = 100;
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE CustomerID = @c', N'@c int', @c = 999;
+-- 5.2 Другой ТИП параметра -> новая запись
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE CustomerID = @c', N'@c bigint', @c = 42;
+-- 5.3 Другой регистр в тексте -> новая запись
+EXEC sp_executesql N'select OrderID FROM dbo.Orders WHERE CustomerID = @c', N'@c int', @c = 42;
+-- 5.4 Ловушка AddWithValue: длина строки объявлена по длине значения -> по записи на каждую длину
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE Region = @r', N'@r nvarchar(6)',  @r = N'Москва';
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE Region = @r', N'@r nvarchar(6)',  @r = N'Казань';
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE Region = @r', N'@r nvarchar(11)', @r = N'Владивосток';
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE Region = @r', N'@r nvarchar(30)', @r = N'Пермь';  -- правильно: как у столбца
+-- 5.5 Другие SET-опции -> новая запись (так «видит» запрос сервер 1С или драйвер)
+SET ARITHABORT OFF;
+EXEC sp_executesql N'SELECT OrderID FROM dbo.Orders WHERE CustomerID = @c', N'@c int', @c = 42;
+SET ARITHABORT ON;
+GO
+-- Результат: сколько записей и сколько раз каждая использована
+SELECT cp.objtype, cp.usecounts, st.text,
+       pa.value AS set_options
+FROM sys.dm_exec_cached_plans cp
+CROSS APPLY sys.dm_exec_sql_text(cp.plan_handle) st
+CROSS APPLY sys.dm_exec_plan_attributes(cp.plan_handle) pa
+WHERE pa.attribute = N'set_options'
+  AND st.text LIKE N'%dbo.Orders WHERE%' AND st.text NOT LIKE N'%dm_exec%'
+ORDER BY st.text;
+/* Ожидаемо:
+   (@c int)SELECT ...        usecounts = 3   <- 5.1
+   (@c bigint)SELECT ...     usecounts = 1   <- 5.2
+   (@c int)select ...        usecounts = 1   <- 5.3
+   (@r nvarchar(6)) ...      usecounts = 2, (@r nvarchar(11)) и (@r nvarchar(30)) — по 1   <- 5.4
+   (@c int)SELECT ... с другим set_options  <- 5.5 */
+GO
