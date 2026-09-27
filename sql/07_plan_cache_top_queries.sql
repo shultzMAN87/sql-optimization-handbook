@@ -61,3 +61,23 @@ FROM sys.dm_exec_query_optimizer_info
 WHERE counter IN (N'optimizations', N'trivial plan', N'search 0', N'search 1',
                   N'search 2', N'timeout', N'memory limit exceeded');
 GO
+
+/* ---------- 7. Хранилища кэша и эксперимент «разный литерал — один query_hash» ---------- */
+SELECT type, name, pages_kb, entries_count
+FROM sys.dm_os_memory_cache_counters
+WHERE type IN (N'CACHESTORE_SQLCP', N'CACHESTORE_OBJCP', N'CACHESTORE_PHDR');
+GO
+-- Подставьте свою таблицу. Запросы отличаются только литералом.
+-- SELECT * FROM dbo.Orders WHERE CustomerID = 1 AND Amount > 100;
+-- GO
+-- SELECT * FROM dbo.Orders WHERE CustomerID = 2 AND Amount > 100;
+-- GO
+SELECT cp.objtype, cp.usecounts, cp.size_in_bytes,
+       qs.sql_handle, qs.query_hash, qs.query_plan_hash, st.text
+FROM sys.dm_exec_cached_plans cp
+CROSS APPLY sys.dm_exec_sql_text(cp.plan_handle) st
+LEFT JOIN sys.dm_exec_query_stats qs ON qs.plan_handle = cp.plan_handle
+WHERE st.text LIKE N'%dbo.Orders%' AND st.text NOT LIKE N'%dm_exec%';
+-- Разные sql_handle + одинаковый query_hash = запрос не параметризован.
+-- Пара «маленький Adhoc (shell) + Prepared» = сработала простая параметризация.
+GO
