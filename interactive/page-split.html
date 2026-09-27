@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Page split в SQL Server — пошаговая визуализация</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f6f7f9;--card:#ffffff;--soft:#eceef2;--text:#1c2024;--muted:#5d6570;--faint:#98a0aa;
+  --line:#d3d8df;--line-strong:#aab2bd;
+  --accent:#1f6fd1;--new-bg:#dff3e4;--new-fg:#1c6b34;--new-line:#3aa05a;
+  --moved-bg:#fcefd6;--moved-fg:#7a4f06;--danger:#c23b3b;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#15181c;--card:#1d2127;--soft:#262b32;--text:#e7eaee;--muted:#a3abb5;--faint:#6f7883;
+  --line:#343a43;--line-strong:#4f5763;
+  --accent:#5b9cf0;--new-bg:#17372a;--new-fg:#8fdcaa;--new-line:#4cb872;
+  --moved-bg:#3d2f12;--moved-fg:#f0c97a;--danger:#ef7b7b;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6}
+main{max-width:860px;margin:0 auto;padding:32px 20px 64px}
+h1{font-size:28px;font-weight:500;margin:0 0 8px}
+h2{font-size:20px;font-weight:500;margin:48px 0 6px}
+p.lead{color:var(--muted);margin:0 0 8px;max-width:70ch}
+.demo{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:14px}
+.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+button{font:inherit;font-size:14px;color:var(--text);background:transparent;border:1px solid var(--line-strong);border-radius:8px;padding:6px 14px;cursor:pointer}
+button:hover{background:var(--soft)}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.cnt{margin-left:auto;font-size:13px;color:var(--muted)}
+.info{background:var(--soft);border-radius:8px;padding:10px 12px;margin-bottom:6px}
+.op{font-family:var(--mono);font-size:14px;font-weight:500;margin-bottom:4px}
+.txt{font-size:14px}
+.lt{font-size:12px;color:var(--muted);margin:12px 0 4px}
+.lv{display:flex;gap:4px;align-items:center;justify-content:center;flex-wrap:wrap}
+.nd{border:1px solid var(--line-strong);border-radius:8px;padding:6px;background:var(--card);min-width:84px;max-width:124px;flex:1}
+.nd.hot{border:2px solid var(--accent)}
+.nd.newp{border:2px dashed var(--new-line)}
+.nd.full{border:2px solid var(--danger)}
+.nh{font-size:12px;font-weight:500}
+.nh span{font-weight:400;color:var(--faint)}
+.sl{height:22px;border-radius:4px;margin-top:4px;font-size:12px;display:flex;align-items:center;justify-content:center;font-family:var(--mono)}
+.sl.e{border:1px dashed var(--line);color:var(--faint)}
+.sl.f{background:var(--soft)}
+.sl.n{background:var(--new-bg);color:var(--new-fg)}
+.sl.m{background:var(--moved-bg);color:var(--moved-fg)}
+.pct{font-size:11px;color:var(--faint);text-align:center;margin-top:4px}
+.warn{font-size:11px;color:var(--danger);text-align:center;margin-top:4px}
+.link{color:var(--faint);font-size:16px}
+.file{display:flex;gap:4px}
+.fs{flex:1;border:1px solid var(--line);border-radius:4px;padding:6px 2px;text-align:center;font-size:12px;color:var(--faint)}
+.fs.u{background:var(--soft);color:var(--text)}
+.fs.hot{border:2px solid var(--accent)}
+.fs small{display:block;font-size:11px;color:var(--faint)}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0 12px}
+.metric{background:var(--soft);border-radius:8px;padding:10px 12px}
+.metric div:first-child{font-size:13px;color:var(--muted)}
+.metric div:last-child{font-size:22px;font-weight:500}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.sw{display:inline-block;width:16px;height:12px;border-radius:3px;margin:0 4px -2px 0}
+footer{margin-top:40px;font-size:13px;color:var(--faint)}
+</style>
+</head>
+<body>
+<main>
+<h1>Page split в SQL Server</h1>
+<p class="lead">Как B-дерево кластерного индекса ведёт себя при вставках: что такое page split, почему Fill Factor работает только после REBUILD и когда дерево становится глубже. Для наглядности на странице помещается 4 строки (в реальности — сотни).</p>
+
+<h2>1. Split листовой страницы</h2>
+<p class="lead">Индекс перестроен с FILLFACTOR = 75. Смотрите на три уровня: корень, листья в порядке ключа и физическое расположение страниц в файле.</p>
+<div class="demo" id="demo1"></div>
+
+<h2>2. Каскадный split и рост глубины дерева</h2>
+<p class="lead">Здесь в корне помещается всего 4 записи, чтобы каскад наступил быстро. Когда родителю некуда положить запись о новой странице, делится и он; split корня добавляет дереву уровень.</p>
+<div class="demo" id="demo2"></div>
+
+<footer>Упрощённая модель для обучения. Реальный движок учитывает размер строк, а не их количество, и ведёт учёт страниц через карты GAM, PFS и IAM.</footer>
+</main>
+
+<script>
+function mountDemo(root, steps, opts){
+  root.innerHTML =
+    '<div class="ctrl"><button data-a="prev">← Назад</button><button data-a="next">Далее →</button>' +
+    '<button data-a="reset">Сначала</button><span class="cnt"></span></div>' +
+    '<div class="info"><div class="op"></div><div class="txt"></div></div>' +
+    '<div class="tree"></div>' + (opts.file ? '<div class="lt">Файл данных — где страницы лежат физически</div><div class="file"></div>' : '') +
+    '<div class="metrics">' +
+      '<div class="metric"><div>Глубина дерева</div><div data-m="d"></div></div>' +
+      '<div class="metric"><div>Листовых страниц</div><div data-m="p"></div></div>' +
+      '<div class="metric"><div>Плотность листьев</div><div data-m="den"></div></div>' +
+      '<div class="metric"><div>Прочитано страниц</div><div data-m="r"></div></div>' +
+    '</div>' +
+    '<div class="legend">' +
+      '<span><span class="sw" style="background:var(--new-bg)"></span>новая запись</span>' +
+      '<span><span class="sw" style="background:var(--moved-bg)"></span>переехала при split</span>' +
+      '<span><span class="sw" style="border:2px dashed var(--new-line)"></span>новая страница</span>' +
+      '<span><span class="sw" style="border:2px solid var(--accent)"></span>читается запросом</span>' +
+    '</div>';
+  const q = s => root.querySelector(s);
+  let i = 0;
+  function draw(){
+    const s = steps[i], n = s.n || [], m = s.m || [], np = s.np || [], path = s.path || [];
+    q('.cnt').textContent = 'Шаг ' + (i + 1) + ' из ' + steps.length;
+    q('.op').textContent = s.op;
+    q('.txt').textContent = s.t;
+    let h = '';
+    s.lv.forEach((lvl, li) => {
+      const leaf = li === s.lv.length - 1;
+      const name = leaf ? 'Листовой уровень — в порядке ключа, связан списком prev ⇄ next' : (li === 0 ? 'Корень (ключ → страница)' : 'Промежуточный уровень');
+      h += '<div class="lt">' + name + '</div><div class="lv">';
+      lvl.forEach((nd, j) => {
+        const cap = leaf ? 4 : (opts.rootCap || 4);
+        let cls = 'nd' + (path.includes(nd.id) ? ' hot' : '') + (np.includes(nd.id) ? ' newp' : '') + (s.full === nd.id ? ' full' : '');
+        const pos = s.file && s.file[nd.id] ? ' <span>файл ' + s.file[nd.id] + '</span>' : '';
+        let sl = '';
+        for (let k = 0; k < cap; k++) {
+          const v = nd.e[k];
+          if (v === undefined) { sl += '<div class="sl e">—</div>'; continue; }
+          const key = leaf ? v : v[0];
+          const lab = leaf ? v : v[0] + ' → ' + v[1];
+          const tag = nd.id + ':' + key;
+          sl += '<div class="sl ' + (n.includes(tag) ? 'n' : m.includes(tag) ? 'm' : 'f') + '">' + lab + '</div>';
+        }
+        const foot = s.full === nd.id ? '<div class="warn">нет места</div>' : (leaf ? '<div class="pct">' + Math.round(nd.e.length / 4 * 100) + '%</div>' : '');
+        h += '<div class="' + cls + '"><div class="nh">' + nd.id + pos + '</div>' + sl + foot + '</div>';
+        if (leaf && j < lvl.length - 1) h += '<span class="link" aria-hidden="true">⇄</span>';
+      });
+      h += '</div>';
+    });
+    q('.tree').innerHTML = h;
+    if (opts.file) {
+      const byPos = {};
+      for (const id in s.file) byPos[s.file[id]] = id;
+      let f = '';
+      for (let k = 1; k <= 8; k++) {
+        const id = byPos[k];
+        f += '<div class="fs' + (id ? ' u' : '') + (id && path.includes(id) ? ' hot' : '') + '"><small>' + k + '</small>' + (id || 'своб.') + '</div>';
+      }
+      q('.file').innerHTML = f;
+    }
+    const leaves = s.lv[s.lv.length - 1];
+    let rows = 0; leaves.forEach(l => rows += l.e.length);
+    q('[data-m="d"]').textContent = s.lv.length;
+    q('[data-m="p"]').textContent = leaves.length;
+    q('[data-m="den"]').textContent = Math.round(rows / (leaves.length * 4) * 100) + '%';
+    q('[data-m="r"]').textContent = s.reads || '—';
+  }
+  root.addEventListener('click', e => {
+    const a = e.target.closest('button') && e.target.closest('button').dataset.a;
+    if (a === 'next' && i < steps.length - 1) i++;
+    else if (a === 'prev' && i > 0) i--;
+    else if (a === 'reset') i = 0;
+    else return;
+    draw();
+  });
+  draw();
+}
+
+const F0 = {P1:1, P2:2, P3:3};
+const steps1 = [
+  {op:'ALTER INDEX ... REBUILD WITH (FILLFACTOR = 75)', t:'Исходное состояние. На каждой странице 3 строки из 4 — 25% оставлено под будущие вставки. Страницы лежат в файле подряд: 1, 2, 3.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,50,60]},{id:'P3',e:[70,80,90]}]], file:F0},
+  {op:'INSERT key = 45', t:'Ключ 45 по порядку должен лечь в P2, между 40 и 50. Свободный слот есть — строка просто вставляется, split не нужен. Но теперь P2 заполнена на 100%: резерв от Fill Factor израсходован, и никто его не восстановит.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,45,50,60]},{id:'P3',e:[70,80,90]}]], file:F0, n:['P2:45']},
+  {op:'INSERT key = 55', t:'Ключ 55 тоже должен лечь в P2, но она полна — происходит page split. 1) Выделяется новая страница P4: рядом свободных нет, поэтому она получает место 7 в файле. 2) Верхняя половина строк P2 (50, 60) переезжает на P4, туда же ложится 55. 3) P4 встраивается в список: P2 ⇄ P4 ⇄ P3. 4) В корень добавляется запись 50 → P4.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,45]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]],
+   file:{P1:1,P2:2,P3:3,P4:7}, n:['P4:55','R:50'], m:['P4:50','P4:60'], np:['P4']},
+  {op:'INSERT key = 42, 47', t:'После split у P2 снова есть место. Новые строки 42 и 47 попадают в её диапазон и дозаполняют её до 100%. Fill Factor тут ни при чём — страница забивается до конца.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42,45,47]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]],
+   file:{P1:1,P2:2,P3:3,P4:7}, n:['P2:42','P2:47']},
+  {op:'INSERT key = 48', t:'P2 снова полна — ещё один split, независимо от предыдущего. Выделяется P5 (место 8 в файле), на неё уезжают 45 и 47 и ложится 48. В корень добавляется 45 → P5. Никакого ожидания REBUILD: каждый split происходит сразу, в транзакции INSERT.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[45,'P5'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42]},{id:'P5',e:[45,47,48]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]],
+   file:{P1:1,P2:2,P3:3,P4:7,P5:8}, n:['P5:48','R:45'], m:['P5:45','P5:47'], np:['P5']},
+  {op:'SELECT ... WHERE key = 47', t:'Поиск одной строки (Index Seek). Движок читает корень, находит там 45 → P5 и сразу идёт в P5. Итого 2 чтения — столько же, сколько до всех split\'ов. Цепочек обходить не нужно: новая страница сразу известна родителю.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[45,'P5'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42]},{id:'P5',e:[45,47,48]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]],
+   file:{P1:1,P2:2,P3:3,P4:7,P5:8}, path:['R','P5'], reads:2},
+  {op:'SELECT ... WHERE key BETWEEN 40 AND 60', t:'Чтение диапазона (Range Scan). Движок находит начало (P2) и идёт по листам через указатель next: P2 → P5 → P4. Это 3 страницы на 9 строк, хотя плотно упакованные 3 страницы вместили бы 12. А физически в файле это прыжки 2 → 8 → 7 вместо последовательного чтения — это и есть логическая фрагментация.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[45,'P5'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42]},{id:'P5',e:[45,47,48]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]],
+   file:{P1:1,P2:2,P3:3,P4:7,P5:8}, path:['R','P2','P5','P4'], reads:4},
+  {op:'INSERT key = 95', t:'Теперь вставки в конец индекса (растущий ключ). 95 больше всех — ложится в последний свободный слот P3. P3 заполнена.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[45,'P5'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42]},{id:'P5',e:[45,47,48]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90,95]}]],
+   file:{P1:1,P2:2,P3:3,P4:7,P5:8}, n:['P3:95']},
+  {op:'INSERT key = 99', t:'P3 полна, но 99 идёт строго после последней строки индекса. SQL Server не делит P3 пополам: он выделяет новую страницу P6 и кладёт туда только 99. Строки не переезжают, P3 остаётся заполненной на 100%. Это «хороший» split — поэтому для растущих ключей Fill Factor ниже 100 обычно не нужен.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[45,'P5'],[50,'P4'],[70,'P3'],[99,'P6']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42]},{id:'P5',e:[45,47,48]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90,95]},{id:'P6',e:[99]}]],
+   file:{P1:1,P2:2,P3:3,P4:7,P5:8,P6:4}, n:['P6:99','R:99'], np:['P6']}
+];
+
+const LV3 = [[{id:'R0',e:[[10,'R1'],[45,'R2']]}],[{id:'R1',e:[[10,'P1'],[40,'P2']]},{id:'R2',e:[[45,'P5'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42]},{id:'P5',e:[45,47,48]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]];
+const steps2 = [
+  {op:'Исходное состояние', t:'Дерево из двух уровней: корень R и три листа. В корне 3 записи из 4 возможных. Поиск любой строки — 2 чтения: корень + лист.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,50,60]},{id:'P3',e:[70,80,90]}]], reads:2},
+  {op:'INSERT key = 45', t:'Строка помещается в P2 — split не нужен. P2 заполнена на 100%.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,45,50,60]},{id:'P3',e:[70,80,90]}]], n:['P2:45']},
+  {op:'INSERT key = 55', t:'P2 полна → split листа. 50 и 60 уезжают на новую P4, туда же ложится 55. Родителю (корню R) нужно добавить запись 50 → P4. Место есть — добавляем. Теперь корень заполнен: 4 из 4.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,45]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]],
+   n:['P4:55','R:50'], m:['P4:50','P4:60'], np:['P4']},
+  {op:'INSERT key = 42, 47', t:'Строки дозаполняют P2. Всё ещё 2 уровня, но и P2, и корень полны — следующая вставка в диапазон P2 запустит каскад.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42,45,47]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]], n:['P2:42','P2:47']},
+  {op:'INSERT key = 48 — шаг 1: split листа', t:'P2 полна → split: 45 и 47 уезжают на новую P5, туда же 48. Теперь в родителя надо добавить 45 → P5, но корень R полон. Запись некуда положить — значит, делить придётся и корень.',
+   lv:[[{id:'R',e:[[10,'P1'],[40,'P2'],[50,'P4'],[70,'P3']]}],[{id:'P1',e:[10,20,30]},{id:'P2',e:[40,42]},{id:'P5',e:[45,47,48]},{id:'P4',e:[50,55,60]},{id:'P3',e:[70,80,90]}]],
+   n:['P5:48'], m:['P5:45','P5:47'], np:['P5'], full:'R'},
+  {op:'INSERT key = 48 — шаг 2: split корня', t:'Корень делится по тем же правилам: выделяется новая страница R2, половина записей (50 → P4, 70 → P3) переезжает на неё, а 45 → P5 ложится по порядку. У R1 и R2 нет общего родителя, а корень может быть только один, поэтому движок выделяет ещё страницу и делает её новым корнем R0 с записями 10 → R1 и 45 → R2. Дерево стало на уровень глубже — и всё это внутри одного INSERT.',
+   lv:LV3, n:['R2:45','R0:10','R0:45'], m:['R2:50','R2:70'], np:['R0','R2']},
+  {op:'SELECT ... WHERE key = 47', t:'Поиск теперь проходит три уровня: R0 (47 ≥ 45 → R2) → R2 (45 ≤ 47 < 50 → P5) → P5. Итого 3 чтения вместо 2. Это единственный случай, когда split увеличивает стоимость точечного поиска, — и он затрагивает весь индекс сразу.',
+   lv:LV3, path:['R0','R2','P5'], reads:3}
+];
+
+mountDemo(document.getElementById('demo1'), steps1, {file:true, rootCap:6});
+mountDemo(document.getElementById('demo2'), steps2, {file:false, rootCap:4});
+</script>
+</body>
+</html>
