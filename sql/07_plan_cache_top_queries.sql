@@ -81,3 +81,19 @@ WHERE st.text LIKE N'%dbo.Orders%' AND st.text NOT LIKE N'%dm_exec%';
 -- Разные sql_handle + одинаковый query_hash = запрос не параметризован.
 -- Пара «маленький Adhoc (shell) + Prepared» = сработала простая параметризация.
 GO
+
+/* ---------- 8. Планы, оптимизация которых закончилась по таймауту (вопрос 20) ---------- */
+WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/sqlserver/2004/07/showplan')
+SELECT TOP (50)
+    qs.total_worker_time / 1000 AS total_cpu_ms,
+    qs.execution_count,
+    SUBSTRING(st.text, qs.statement_start_offset / 2 + 1, 300) AS statement_start,
+    qp.query_plan
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle)    st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+WHERE qp.query_plan.exist('//StmtSimple[@StatementOptmEarlyAbortReason="TimeOut"]') = 1
+ORDER BY qs.total_worker_time DESC;
+-- Для очень больших планов sys.dm_exec_query_plan может вернуть NULL (вложенность XML > 128):
+-- тогда используйте sys.dm_exec_text_query_plan и поиск по тексту.
+GO
