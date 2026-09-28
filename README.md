@@ -16,7 +16,7 @@
 |---|---|---|
 | [1. Хранение данных и внутреннее устройство](docs/01-storage.md) | 1–10, 1а | Страницы, экстенты, ROW_OVERFLOW и LOB, куча и кластерная таблица, B-дерево, INCLUDE, покрывающий индекс, фрагментация, Fill Factor, буферный пул, forwarded records, составные индексы |
 | [2. Путь запроса](docs/02-query-pipeline.md) | 11–17 | Parser, algebrizer, кэш планов, перекомпиляция, ad hoc / prepared / процедуры, параметризация, `sp_executesql` |
-| [3. Оптимизатор](docs/03-optimizer.md) | 18–28 | CBO и RBO, стоимость, фазы оптимизации, simplification, Memo, логические и физические операторы, SARGable, неявные преобразования, хинты |
+| [3. Оптимизатор](docs/03-optimizer.md) | 18–28 | Общая схема работы оптимизатора, CBO и RBO, стоимость, фазы оптимизации и бюджет, simplification, Memo и правила трансформации, логические и физические операторы, SARGable, неявные преобразования, хинты |
 | [4. Статистика и кардинальность](docs/04-statistics.md) | 29–39 | Заголовок, плотность, гистограмма, автообновление, FULLSCAN/SAMPLE, восходящий ключ, CE 70 и 120, `#temp` и `@table`, ошибки оценки |
 | [5. Операторы плана](docs/05-plans-operators.md) | 40–55, 47а, 50а, 55а | Estimated/Actual, Scan и Seek, Key Lookup, Seek Predicate, NL/Merge/Hash, неэффективный JOIN, Sort, spill, memory grant, агрегаты, ORDER BY/GROUP BY и индексы, Spool, параллелизм, предупреждения, Missing Index, анализ плана по стоимости |
 | [6. Параметры и кэш планов](docs/06-params-cache.md) | 56–60 | Parameter sniffing: диагностика и лечение, DMV, Query Store |
@@ -59,6 +59,7 @@
 | [`14_row_overflow_lob_demo.sql`](sql/14_row_overflow_lob_demo.sql) | LobDemo | ROW_OVERFLOW и LOB: когда и что выносится, lob logical reads, `large value types out of row`, дерево значения 1 МБ, `.WRITE` | 1, 1а |
 | [`15_negation_filtered_index_demo.sql`](sql/15_negation_filtered_index_demo.sql) | NegationDemo | Отрицания `<>`, `NOT IN`, `NOT LIKE`: диапазоны в Seek Predicates, когда Seek и когда Scan, фильтрованный индекс, UnmatchedIndexes | 26, 53 |
 | [`16_join_problems_demo.sql`](sql/16_join_problems_demo.sql) | JoinDemo | Неэффективный JOIN: нет индекса / Index Spool, Key Lookup, недооценка и NL, CONVERT_IMPLICIT, Hash spill, Sort перед Merge, размножение строк, OR в ON | 45–51, 47а, 55а |
+| [`17_optimizer_internals_demo.sql`](sql/17_optimizer_internals_demo.sql) | OptDemo | Оптимизатор изнутри: тривиальный и полный план, фазы и бюджет (флаг 8675, `dm_exec_query_optimizer_info`), деревья до/после упрощения (8606), противоречие с CHECK, удаление соединения по FK, транзитивность, сработавшие и отключённые правила трансформации | 20–24 |
 
 ## Примечания к исходным материалам
 
