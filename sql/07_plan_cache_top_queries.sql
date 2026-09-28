@@ -97,3 +97,34 @@ ORDER BY qs.total_worker_time DESC;
 -- Для очень больших планов sys.dm_exec_query_plan может вернуть NULL (вложенность XML > 128):
 -- тогда используйте sys.dm_exec_text_query_plan и поиск по тексту.
 GO
+
+/* ---------- 9. Операторы плана из кэша по стоимости (вопрос 55а) ---------- */
+-- Подставьте фильтр текста запроса. Берётся самый «тяжёлый» по чтениям план.
+DECLARE @text_filter nvarchar(200) = N'%dbo.Orders%';
+WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/sqlserver/2004/07/showplan'),
+p AS
+(
+    SELECT TOP (1) qp.query_plan
+    FROM sys.dm_exec_query_stats qs
+    CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle)    st
+    CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+    WHERE st.text LIKE @text_filter AND st.text NOT LIKE N'%dm_exec%'
+    ORDER BY qs.total_logical_reads DESC
+)
+SELECT
+    r.value('@NodeId', 'int')                             AS node_id,
+    r.value('@PhysicalOp', 'nvarchar(60)')                AS physical_op,
+    r.value('@LogicalOp', 'nvarchar(60)')                 AS logical_op,
+    r.value('@EstimatedTotalSubtreeCost', 'float')
+      - r.value('sum(*/RelOp/@EstimatedTotalSubtreeCost)', 'float') AS operator_cost,   -- собственная
+    r.value('@EstimatedTotalSubtreeCost', 'float')        AS subtree_cost,
+    r.value('@EstimateIO', 'float')                       AS io_cost_per_exec,
+    r.value('@EstimateCPU', 'float')                      AS cpu_cost_per_exec,
+    r.value('@EstimateRows', 'float')                     AS est_rows_per_exec,
+    1 + r.value('@EstimateRebinds', 'float')
+      + r.value('@EstimateRewinds', 'float')              AS est_executions
+FROM p
+CROSS APPLY p.query_plan.nodes('//RelOp') AS x(r)
+ORDER BY operator_cost DESC;
+-- Это оценки. Фактические строки, выполнения и чтения смотрите в фактическом плане.
+GO
