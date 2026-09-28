@@ -128,3 +128,36 @@ CROSS APPLY p.query_plan.nodes('//RelOp') AS x(r)
 ORDER BY operator_cost DESC;
 -- Это оценки. Фактические строки, выполнения и чтения смотрите в фактическом плане.
 GO
+
+/* ---------- 10. Перекомпиляции: кто, сколько и почему (вопрос 14) ---------- */
+-- 10.1 Инструкции, которые перекомпилировались чаще всего
+SELECT TOP (20)
+       qs.plan_generation_num, qs.execution_count, qs.creation_time, qs.last_execution_time,
+       SUBSTRING(st.text, qs.statement_start_offset / 2 + 1, 200) AS stmt
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+ORDER BY qs.plan_generation_num DESC;
+GO
+-- 10.2 Компиляции и перекомпиляции по серверу (накопительные значения:
+--      сделайте два снимка с интервалом и посчитайте разницу)
+SELECT counter_name, cntr_value
+FROM sys.dm_os_performance_counters
+WHERE object_name LIKE N'%SQL Statistics%'
+  AND counter_name IN (N'Batch Requests/sec', N'SQL Compilations/sec', N'SQL Re-Compilations/sec');
+GO
+-- 10.3 Причины перекомпиляций: XE-сессия (подставьте имя базы)
+-- CREATE EVENT SESSION [Recompiles] ON SERVER
+-- ADD EVENT sqlserver.sql_statement_recompile (
+--     ACTION (sqlserver.sql_text, sqlserver.database_name, sqlserver.session_id)
+--     WHERE sqlserver.database_name = N'MyDb')
+-- ADD TARGET package0.ring_buffer;
+-- ALTER EVENT SESSION [Recompiles] ON SERVER STATE = START;
+-- -- Watch Live Data -> поле recompile_cause
+-- ALTER EVENT SESSION [Recompiles] ON SERVER STATE = STOP;
+-- DROP EVENT SESSION [Recompiles] ON SERVER;
+
+-- 10.4 Демонстрация причин (на тестовой таблице dbo.T с индексом и запросом в цикле):
+--   ALTER TABLE / CREATE INDEX           -> Schema changed
+--   UPDATE STATISTICS после изменений     -> Statistics changed
+--   EXEC sp_recompile N'dbo.T'           -> следующий вызов перекомпилируется
+--   SET ANSI_NULLS OFF внутри пакета      -> Set option change
