@@ -249,6 +249,60 @@ OPTION (RECOMPILE);
 GO
 
 
+/* ---------- БЛОК 11. Три числа строк и масштабирование оценки (вопрос 29а) ---------- */
+USE StatsDemo;
+GO
+-- Чтобы автообновление не пересчитало статистику посреди опыта
+ALTER DATABASE StatsDemo SET AUTO_UPDATE_STATISTICS OFF;
+UPDATE STATISTICS dbo.Orders IX_Orders_Region_Customer WITH FULLSCAN;   -- чистая точка отсчёта
+GO
+-- 11.1 До: метаданные, статистика, счётчик изменений
+SELECT SUM(row_count) AS rows_in_metadata
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID(N'dbo.Orders') AND index_id IN (0, 1);
+
+SELECT s.name, sp.last_updated, sp.rows, sp.rows_sampled, sp.modification_counter
+FROM sys.stats s
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE s.object_id = OBJECT_ID(N'dbo.Orders') AND s.name = N'IX_Orders_Region_Customer';
+GO
+-- 11.2 Добавляем +20% строк с тем же распределением регионов
+;WITH n AS
+(
+    SELECT TOP (20000) ROW_NUMBER() OVER (ORDER BY (SELECT NULL)) AS n
+    FROM sys.all_columns a CROSS JOIN sys.all_columns b
+)
+INSERT dbo.Orders (CustomerID, Region, OrderDate, Amount)
+SELECT n % 5000 + 1,
+       CASE WHEN n % 100 < 50 THEN N'Москва'
+            WHEN n % 100 < 75 THEN N'Санкт-Петербург'
+            WHEN n % 100 < 90 THEN N'Казань'
+            WHEN n % 100 < 97 THEN N'Новосибирск'
+            ELSE                   N'Владивосток' END,
+       '20260101', 100
+FROM n;
+GO
+-- 11.3 После: метаданные выросли СРАЗУ, Rows статистики — нет, счётчик изменений +20 000
+SELECT SUM(row_count) AS rows_in_metadata
+FROM sys.dm_db_partition_stats
+WHERE object_id = OBJECT_ID(N'dbo.Orders') AND index_id IN (0, 1);
+
+SELECT s.name, sp.last_updated, sp.rows, sp.rows_sampled, sp.modification_counter
+FROM sys.stats s
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE s.object_id = OBJECT_ID(N'dbo.Orders') AND s.name = N'IX_Orders_Region_Customer';
+
+EXEC sp_spaceused N'dbo.Orders';
+GO
+-- 11.4 Оценка масштабирована: EQ_ROWS(Москва) × rows_in_metadata / Rows статистики.
+--      Сравните Estimated Number of Rows в плане (Ctrl+M) с этим расчётом и с Actual.
+SELECT COUNT(*) FROM dbo.Orders WHERE Region = N'Москва' OPTION (RECOMPILE);
+GO
+-- 11.5 Вернуть автообновление
+ALTER DATABASE StatsDemo SET AUTO_UPDATE_STATISTICS ON;
+GO
+
+
 /* ---------- Уборка (раскомментировать при необходимости) ---------- */
 -- USE master;
 -- ALTER DATABASE StatsDemo SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
