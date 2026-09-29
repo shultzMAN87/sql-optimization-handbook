@@ -303,6 +303,54 @@ ALTER DATABASE StatsDemo SET AUTO_UPDATE_STATISTICS ON;
 GO
 
 
+/* ---------- БЛОК 12. Шаги гистограммы и составная статистика (вопросы 29, 30а) ---------- */
+USE StatsDemo;
+GO
+UPDATE STATISTICS dbo.Orders st_Orders_CustomerID WITH FULLSCAN;
+GO
+-- 12.1 Какие статистики есть и какой столбец в каждой ведущий (stats_column_id = 1)
+SELECT s.name, s.auto_created, s.user_created, c.name AS column_name, sc.stats_column_id
+FROM sys.stats s
+JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id
+JOIN sys.columns c        ON c.object_id = sc.object_id AND c.column_id = sc.column_id
+WHERE s.object_id = OBJECT_ID(N'dbo.Orders')
+ORDER BY s.name, sc.stats_column_id;
+GO
+-- 12.2 Шаги гистограммы по CustomerID (5 000 значений -> шаги объединяют много значений)
+DECLARE @sid int = (SELECT stats_id FROM sys.stats
+                    WHERE object_id = OBJECT_ID(N'dbo.Orders') AND name = N'st_Orders_CustomerID');
+SELECT step_number, range_high_key, range_rows, equal_rows, distinct_range_rows, average_range_rows
+FROM sys.dm_db_stats_histogram(OBJECT_ID(N'dbo.Orders'), @sid)
+ORDER BY step_number;
+GO
+-- 12.3 Оценка на границе шага и внутри шага.
+--      Берём первый «широкий» шаг, строим запросы с ЛИТЕРАЛАМИ (иначе сработает плотность).
+--      Смотрите Estimated и Actual Number of Rows в фактическом плане (Ctrl+M).
+DECLARE @sid int = (SELECT stats_id FROM sys.stats
+                    WHERE object_id = OBJECT_ID(N'dbo.Orders') AND name = N'st_Orders_CustomerID');
+DECLARE @hi int, @inside int, @lo int;
+SELECT TOP (1) @hi = CAST(range_high_key AS int)
+FROM sys.dm_db_stats_histogram(OBJECT_ID(N'dbo.Orders'), @sid)
+WHERE distinct_range_rows > 2 AND step_number > 2
+ORDER BY step_number;
+SET @inside = @hi - 1;          -- внутри того же шага
+SET @lo     = @hi - 2;
+DECLARE @sql nvarchar(max) =
+      N'SELECT COUNT(*) AS on_boundary FROM dbo.Orders WHERE CustomerID = ' + CAST(@hi AS nvarchar(10)) + N' OPTION (RECOMPILE);'   -- EQ_ROWS
+    + N'SELECT COUNT(*) AS inside_step FROM dbo.Orders WHERE CustomerID = ' + CAST(@inside AS nvarchar(10)) + N' OPTION (RECOMPILE);' -- AVG_RANGE_ROWS
+    + N'SELECT COUNT(*) AS part_of_step FROM dbo.Orders WHERE CustomerID BETWEEN ' + CAST(@lo AS nvarchar(10))
+    + N' AND ' + CAST(@inside AS nvarchar(10)) + N' OPTION (RECOMPILE);'                                                             -- доля шага
+    + N'SELECT COUNT(*) AS beyond_max FROM dbo.Orders WHERE CustomerID = 999999 OPTION (RECOMPILE);';                              -- вне гистограммы
+PRINT @sql;
+EXEC (@sql);
+GO
+-- 12.4 Второй столбец составного индекса: гистограмма берётся из ДРУГОЙ статистики.
+--      В фактическом плане: SELECT -> Properties -> OptimizerStatsUsage (2016 SP2 / 2017+)
+--      покажет, что для CustomerID использована st_Orders_CustomerID, а не IX_Orders_Region_Customer.
+SELECT COUNT(*) FROM dbo.Orders WHERE Region = N'Москва' AND CustomerID = 1 OPTION (RECOMPILE);
+GO
+
+
 /* ---------- Уборка (раскомментировать при необходимости) ---------- */
 -- USE master;
 -- ALTER DATABASE StatsDemo SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
