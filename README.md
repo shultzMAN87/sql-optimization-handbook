@@ -61,6 +61,7 @@
 | [`16_join_problems_demo.sql`](sql/16_join_problems_demo.sql) | JoinDemo | Неэффективный JOIN: нет индекса / Index Spool, Key Lookup, недооценка и NL, CONVERT_IMPLICIT, Hash spill, Sort перед Merge, размножение строк, OR в ON | 45–51, 47а, 55а |
 | [`17_optimizer_internals_demo.sql`](sql/17_optimizer_internals_demo.sql) | OptDemo | Оптимизатор изнутри: тривиальный и полный план, фазы и бюджет (флаг 8675, `dm_exec_query_optimizer_info`), деревья до/после упрощения (8606), противоречие с CHECK, удаление соединения по FK, транзитивность, сработавшие и отключённые правила трансформации | 20–24 |
 | [`18_statistics_storage_sampling_demo.sql`](sql/18_statistics_storage_sampling_demo.sql) | StatsSampleDemo | Где хранится статистика, появление `_WA_Sys_` при компиляции, автоматический процент выборки, выборка по страницам (сгруппированные и разбросанные значения), `PERSIST_SAMPLE_PERCENT`, `DBCC CLONEDATABASE` | 29б, 33, 34 |
+| [`19_seek_predicate_demo.sql`](sql/19_seek_predicate_demo.sql) | PredicateDemo | Seek Predicates и Predicate: шесть случаев на одном индексе, Rows Read против Actual Rows, Predicate на Key Lookup, отдельный Filter, текстовый план | 42, 44 |
 
 ## Примечания к исходным материалам
 

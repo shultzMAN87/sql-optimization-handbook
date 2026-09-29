@@ -2,7 +2,7 @@
 
 [← Раздел 4](04-statistics.md) · [Оглавление](../README.md) · [Раздел 6 →](06-params-cache.md)
 
-Вопросы 40–55 и дополнительные 47а, 50а, 55а. Практика: [`01_scan_vs_seek_demo.sql`](../sql/01_scan_vs_seek_demo.sql), [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql), [`04_parallelism_demo.sql`](../sql/04_parallelism_demo.sql), блок 10 [`02_statistics_demo.sql`](../sql/02_statistics_demo.sql), [`13_order_by_group_by_demo.sql`](../sql/13_order_by_group_by_demo.sql), [`16_join_problems_demo.sql`](../sql/16_join_problems_demo.sql).
+Вопросы 40–55 и дополнительные 47а, 50а, 55а. Практика: [`01_scan_vs_seek_demo.sql`](../sql/01_scan_vs_seek_demo.sql), [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql), [`04_parallelism_demo.sql`](../sql/04_parallelism_demo.sql), блок 10 [`02_statistics_demo.sql`](../sql/02_statistics_demo.sql), [`13_order_by_group_by_demo.sql`](../sql/13_order_by_group_by_demo.sql), [`16_join_problems_demo.sql`](../sql/16_join_problems_demo.sql), [`19_seek_predicate_demo.sql`](../sql/19_seek_predicate_demo.sql).
 
 ---
 
@@ -80,7 +80,7 @@ flowchart RL
 
 **Как оценивать план на практике:** смотрите не на название оператора, а на три вещи.
 1. `Actual Rows Read` и `Actual Number of Rows`.
-2. `Seek Predicates` и `Predicate`.
+2. `Seek Predicates` и `Predicate` (ниже — «Что значит „условие в Predicate“»).
 3. Логические чтения (`SET STATISTICS IO ON`).
 
 **Clustered Index Scan и Nonclustered Index Seek — прямое сравнение** (частый вопрос на аттестации):
@@ -97,6 +97,67 @@ flowchart RL
 | Свойства в плане | `Ordered`, `Scan Direction`, `Actual Rows Read`, `Predicate` | `Seek Predicates` (Prefix / Start / End), `Predicate`, `Actual Rows Read`, `Number of Executions` |
 
 Главный вывод для ответа: **оператор сам по себе не хорош и не плох**. Seek дешевле, только если прочитано мало страниц. Скан всей таблицы бывает дешевле Seek с сотнями тысяч Key Lookup. Сравнивают логические чтения и соотношение прочитанных и возвращённых строк.
+
+### Что значит «условие в Predicate»: Seek Predicates и Predicate
+
+Оператор чтения (Index Seek, Index Scan, Clustered Index Scan) применяет условие `WHERE` одним из двух способов:
+- **Seek Predicates** — условие используется для **навигации по индексу**: куда прыгнуть и где остановиться. Строки вне этого отрезка **вообще не читаются**.
+- **Predicate** («остаточный предикат», residual predicate) — условие **проверяется для каждой уже прочитанной строки**. Неподходящие строки отбрасываются, но прочитать их всё равно пришлось.
+
+«Условие в Predicate» значит, что оно не помогло сократить чтение, а только отфильтровало результат.
+
+**Аналогия.** Телефонный справочник отсортирован по фамилии, а внутри фамилии — по имени. Это индекс `(Фамилия, Имя)`.
+
+| Задача | Что делаете | В терминах плана |
+|---|---|---|
+| Иванов Пётр | Открываете на «Иванов», внутри сразу на «Пётр» | Оба условия — Seek Predicates |
+| Ивановы, у которых телефон кончается на 7 | Открываете на «Иванов», **просматриваете всех Ивановых**, у каждого смотрите телефон | Фамилия — Seek Predicate, телефон — Predicate |
+| Все, у кого телефон кончается на 7 | Листаете **весь справочник** и проверяете каждого | Скан + Predicate |
+
+Во втором случае прочитаны все Ивановы (например, 1 000), а подошли 30: работа — 1 000 строк, результат — 30.
+
+**Шесть случаев на одной таблице.** `Orders` на 1 млн строк, индекс:
+
+```sql
+CREATE INDEX IX_Orders_Cust_Date ON dbo.Orders (CustomerID, OrderDate) INCLUDE (Status, Amount);
+```
+
+У клиента 42 — 1 000 заказов, из них 50 за 2026 год и 30 со `Status = 3`. Числа условные, в демо-скрипте свои.
+
+| № | Условие `WHERE` | Seek Predicates | Predicate | Прочитано → отдано | Почему так |
+|---|---|---|---|---|---|
+| 1 | `CustomerID = 42 AND OrderDate >= '20260101'` | Prefix: `CustomerID = 42`, Start: `OrderDate >= '2026-01-01'` | — | 50 → 50 | Идеально: спуск прямо к «клиент 42, 1 января 2026» |
+| 2 | `CustomerID = 42 AND Status = 3` | Prefix: `CustomerID = 42` | `Status = 3` | 1 000 → 30 | `Status` только в `INCLUDE`: по нему индекс не отсортирован, прыгнуть нельзя |
+| 3 | `OrderDate >= '20260101'` | — (**Index Scan**) | `OrderDate >= …` | 1 000 000 → 50 000 | Нет условия на первый столбец: даты разбросаны по всему индексу |
+| 4 | `CustomerID = 42 AND YEAR(OrderDate) = 2026` | Prefix: `CustomerID = 42` | `YEAR(OrderDate) = 2026` | 1 000 → 50 | Функция над столбцом — условие несаргабельно. Исправление: `OrderDate >= '20260101' AND OrderDate < '20270101'` → 50 → 50 |
+| 5 | `CustomerID BETWEEN 40 AND 45 AND OrderDate = '20260315'` | Start: `CustomerID >= 40`, End: `CustomerID <= 45` | `OrderDate = …` | 6 000 → 12 | После **диапазона** по первому столбцу второй для навигации не используется: даты идут «по кругу» у каждого клиента заново |
+| 6 | `CustomerID = 42 AND Comment LIKE N'%срочно%'` (`Comment` нет в индексе) | Index Seek: Prefix `CustomerID = 42` | На **Key Lookup**: `Comment LIKE …` | Seek 1 000, Key Lookup **1 000 раз** → 5 | Ради пяти строк — 1 000 походов в кластерный индекс |
+
+Правило навигации: **равенства по ведущим столбцам (Prefix), затем максимум один диапазон (Start / End)**. Всё остальное — в Predicate ([вопрос 10](01-storage.md#10--порядок-столбцов-и-селективность-в-составном-индексе), [вопрос 44](#44-seek-predicate-и-predicate-residual)).
+
+**Где это видно в плане:**
+- всплывающая подсказка или окно свойств (F4) оператора: поля **Seek Predicates** (в них `Prefix`, `Start`, `End`) и **Predicate**;
+- XML-план: элементы `<SeekPredicates>` и `<Predicate>`;
+- текстовый план (`SET SHOWPLAN_TEXT ON`): `SEEK:(…)` — навигация, `WHERE:(…)` — остаточная проверка;
+- **главная метрика** — два числа в фактическом плане (SQL Server 2016 SP1 и новее): **Number of Rows Read** (сколько прочитано) и **Actual Number of Rows** (сколько отдано дальше). Их разница — строки, отброшенные Predicate. Прочитано 1 000 000, отдано 50 — условие работает как фильтр, а не как поиск, даже если на значке написано «Index Seek».
+
+**Predicate внутри оператора и отдельный Filter.** Иногда в плане есть отдельный оператор **Filter**. Это тоже проверка строк, но хуже Predicate внутри чтения: строки сначала выходят из оператора чтения, проходят часть плана и только потом отбрасываются. Filter появляется, когда условие нельзя «вдавить» в чтение: оно зависит от результата соединения, агрегата (`HAVING`) или сложного выражения.
+
+Эффективность, от лучшего к худшему:
+1. **Seek Predicate** — лишнее не читается.
+2. **Predicate** в операторе чтения — прочитано, но сразу отброшено.
+3. **Predicate на Key Lookup** — ради проверки каждой строки отдельный поход в таблицу.
+4. **Отдельный Filter** — строки прошли часть плана и только потом отброшены.
+
+**Как перенести условие из Predicate в Seek Predicates:**
+- сделать условие саргабельным: убрать функцию над столбцом, выровнять типы ([вопросы 26–27](03-optimizer.md#26-sargable-предикат));
+- добавить столбец в **ключ** индекса, а не в `INCLUDE`, если по нему фильтруют;
+- выбрать порядок столбцов: сначала те, что с равенством, потом столбец с диапазоном;
+- если Predicate стоит на Key Lookup — добавить столбец в индекс, чтобы проверка шла до Lookup ([вопрос 43](#43-key-lookup-и-rid-lookup)).
+
+> 1С: типичная картина — индекс регистра по периоду и первому измерению, а отбор идёт по второму или третьему измерению или после диапазона по периоду. В плане — Seek по периоду и Predicate по измерениям, а Number of Rows Read на порядки больше Actual Number of Rows. Частый обитатель Predicate в таблицах движений — `_Active = 0x01`.
+
+Все шесть случаев и Filter на данных — [`19_seek_predicate_demo.sql`](../sql/19_seek_predicate_demo.sql).
 
 Все варианты на одних данных — [`01_scan_vs_seek_demo.sql`](../sql/01_scan_vs_seek_demo.sql).
 
@@ -140,6 +201,8 @@ flowchart RL
 
 Не путать с **Probe Residual** у Hash Match: это проверка условия соединения после совпадения хешей.
 
+
+Подробный разбор с аналогией, шестью случаями на одной таблице и отдельным оператором Filter — в [вопросе 42](#что-значит-условие-в-predicate-seek-predicates-и-predicate).
 ---
 
 ## 45. Nested Loops, Merge Join и Hash Match
