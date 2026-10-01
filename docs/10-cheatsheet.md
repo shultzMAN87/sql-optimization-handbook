@@ -75,7 +75,7 @@
 51. **Spool** — кэш поддерева во worktable. **Index Spool** — «не хватает индекса». Eager Spool при UPDATE — Halloween protection.
 52. Параллельный план, если стоимость > **cost threshold** (5) и MAXDOP > 1. Обмены: **Distribute / Repartition / Gather Streams**. MAXDOP — потоков на ветку.
 53. PlanAffectingConvert, ColumnsWithNoStatistics, SpillToTempDb, MemoryGrant (Excessive), NoJoinPredicate, UnmatchedIndexes, Missing Index.
-54. ★ Missing Index не видит существующих индексов, записи и нагрузки, механически ставит ключи, раздувает INCLUDE, лечит симптом.
+54. ★ Missing Index не видит существующих индексов, записи и нагрузки, механически ставит ключи, раздувает INCLUDE, лечит симптом. Подсказки — в XML плана (все) и в DMV `sys.dm_db_missing_index_*` (в памяти, до перезапуска). equality (порядок по column_id, не по пользе) + inequality + included. Похожие подсказки объединять. 1С: «Индексировать», «с доп. упорядочиванием», дополнительный индекс КОРП — не ручной CREATE INDEX.
 55. ★ Проценты — **оценки до выполнения**: неверная кардинальность, UDF, spill и ожидания в них не отражены.
 55а. Анализ по стоимости: общая стоимость (Subtree Cost на SELECT) → операторы с наибольшим Operator Cost и ветки с наибольшим Subtree Cost → из чего стоимость (I/O, CPU, строки, выполнения) → **сверка с фактом** (Actual Rows/Executions, чтения, время) → исправление и сравнение «до/после». Стоимость — оценка, не факт.
 

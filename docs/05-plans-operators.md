@@ -2,7 +2,7 @@
 
 [← Раздел 4](04-statistics.md) · [Оглавление](../README.md) · [Раздел 6 →](06-params-cache.md)
 
-Вопросы 40–55 и дополнительные 47а, 50а, 55а. Практика: [`01_scan_vs_seek_demo.sql`](../sql/01_scan_vs_seek_demo.sql), [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql), [`04_parallelism_demo.sql`](../sql/04_parallelism_demo.sql), блок 10 [`02_statistics_demo.sql`](../sql/02_statistics_demo.sql), [`13_order_by_group_by_demo.sql`](../sql/13_order_by_group_by_demo.sql), [`16_join_problems_demo.sql`](../sql/16_join_problems_demo.sql), [`19_seek_predicate_demo.sql`](../sql/19_seek_predicate_demo.sql), [`20_join_algorithms_demo.sql`](../sql/20_join_algorithms_demo.sql).
+Вопросы 40–55 и дополнительные 47а, 50а, 55а. Практика: [`01_scan_vs_seek_demo.sql`](../sql/01_scan_vs_seek_demo.sql), [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql), [`04_parallelism_demo.sql`](../sql/04_parallelism_demo.sql), блок 10 [`02_statistics_demo.sql`](../sql/02_statistics_demo.sql), [`13_order_by_group_by_demo.sql`](../sql/13_order_by_group_by_demo.sql), [`16_join_problems_demo.sql`](../sql/16_join_problems_demo.sql), [`19_seek_predicate_demo.sql`](../sql/19_seek_predicate_demo.sql), [`20_join_algorithms_demo.sql`](../sql/20_join_algorithms_demo.sql), [`21_missing_index_demo.sql`](../sql/21_missing_index_demo.sql).
 
 ---
 
@@ -828,6 +828,72 @@ flowchart RL
 - проверить на тесте «до/после» по чтениям.
 
 Скрипты — [`10_index_maintenance_audit.sql`](../sql/10_index_maintenance_audit.sql).
+
+
+### Откуда берутся подсказки
+
+При компиляции запроса оптимизатор замечает: «для этого условия подошёл бы такой индекс, и стоимость плана снизилась бы примерно на N%». Он делает две вещи:
+- записывает подсказку **в план** — элемент `MissingIndexes` в XML. В графическом плане из него видна только одна, зелёным текстом над планом;
+- **накапливает статистику** в DMV: сколько раз такой индекс пригодился бы (`user_seeks`, `user_scans`), средняя стоимость запросов и ожидаемое снижение.
+
+Свойства этих данных:
+- живут **в памяти** и пропадают при перезапуске сервера. По таблице они сбрасываются и при изменении её метаданных, например при создании или удалении индекса;
+- число хранимых групп подсказок **ограничено** (несколько сотен). На большой базе часть подсказок просто не попадёт в DMV;
+- для тривиальных планов подсказки не формируются ([вопрос 21](03-optimizer.md#21-trivial-plan));
+- это оценки оптимизатора: если оценка числа строк неверна, неверен и `avg_user_impact`.
+
+| Представление | Что в нём |
+|---|---|
+| `sys.dm_db_missing_index_details` | Сама подсказка: таблица (`statement`), `equality_columns`, `inequality_columns`, `included_columns` |
+| `sys.dm_db_missing_index_groups` | Связь подсказки с группой |
+| `sys.dm_db_missing_index_group_stats` | Польза: `user_seeks`, `user_scans`, `last_user_seek`, `avg_total_user_cost`, `avg_user_impact` (ожидаемое снижение стоимости, %) |
+| `sys.dm_db_missing_index_group_stats_query` (SQL Server 2019+) | То же **по каждому запросу**: `query_hash`, `last_sql_handle` — видно, какой именно запрос просил индекс |
+
+### Как читать подсказку
+
+```text
+statement:          [MyDb].[dbo].[Orders]
+equality_columns:   [CustomerID], [Status]      ← условия на равенство (=, IN с одним значением)
+inequality_columns: [OrderDate]                 ← диапазоны и неравенства (>, <, BETWEEN, <>, IS NOT NULL)
+included_columns:   [Amount], [Comment]         ← нужны запросу, но не для поиска
+```
+
+Механический перевод подсказки в индекс:
+
+```sql
+CREATE INDEX IX_… ON dbo.Orders (CustomerID, Status, OrderDate) INCLUDE (Amount, Comment);
+--                                [equality …]       [inequality]         [included]
+```
+
+Что важно понимать:
+- **Порядок внутри `equality_columns` ничего не значит.** Столбцы перечислены по порядку в таблице (по `column_id`), а не по селективности или полезности. Порядок ключа выбираете вы: какие столбцы есть в большинстве запросов, где нужен диапазон ([вопрос 10](01-storage.md#10--порядок-столбцов-и-селективность-в-составном-индексе)).
+- **`inequality_columns` после равенств** — правильно для одного запроса. Но если диапазонных столбцов несколько, в навигации поможет только первый ([вопрос 44](#44-seek-predicate-и-predicate-residual)).
+- **`included_columns`** часто содержит почти все столбцы таблицы (из-за `SELECT *`): индекс превращается в копию таблицы. Сначала сократите список выбираемых столбцов.
+- **Похожие подсказки** для разных запросов нужно **объединять**: `(CustomerID) INCLUDE (Amount)` и `(CustomerID, OrderDate) INCLUDE (Status)` закрываются одним индексом `(CustomerID, OrderDate) INCLUDE (Amount, Status)`, а не двумя.
+
+### Где увидеть все подсказки
+
+- **Графический план** показывает одну подсказку. Правой кнопкой → **Missing Index Details…** — SSMS сгенерирует `CREATE INDEX` с комментарием о пользе. Это черновик для анализа, а не готовое решение.
+- **XML плана** — все подсказки: `<MissingIndexGroup Impact="…">`, внутри `<ColumnGroup Usage="EQUALITY | INEQUALITY | INCLUDE">`.
+- **Кэш планов** — запросы с подсказками и их стоимость (блок 3б в [`10_index_maintenance_audit.sql`](../sql/10_index_maintenance_audit.sql)).
+- **SQL Server 2019+** — `sys.dm_db_missing_index_group_stats_query` связывает подсказку с текстом запроса (блок 3в в том же скрипте).
+
+### Применительно к 1С
+
+- Подсказка указывает на служебные имена: `[_Document45]`, `[_Fld1234RRef]`, `[_Period]`, `[_AccumRg77]`. Перевести их в объекты и реквизиты можно через `ПолучитьСтруктуруХраненияБазыДанных(, Истина)` ([вопрос 68](08-1c-specifics.md#68-как-запрос-1с-транслируется-в-sql-как-понять-объект-по-имени-таблицы)).
+- Создавать индекс вручную в СУБД нельзя: он пропадёт при реструктуризации и не поддерживается вендором. Реализовать подсказку можно штатно ([вопрос 77](08-1c-specifics.md#77-как-индексы-объектов-1с-отображаются-в-индексы-субд)):
+
+  | Подсказка | Штатное решение в 1С |
+  |---|---|
+  | `equality: [_FldN]` на справочнике или документе | Реквизит → «Индексировать» (индекс Реквизит + Ссылка) |
+  | `equality: [_FldN]`, `inequality: [_Date_Time]` на документе | Реквизит → «Индексировать **с доп. упорядочиванием**» (Реквизит + Дата + Ссылка) |
+  | `equality: [_FldN]` на таблице движений регистра | Измерение или реквизит → «Индексировать» (Измерение + Период + Регистратор + НомерСтроки) |
+  | Есть `included_columns`, задача — убрать Key Lookup | **Дополнительный индекс** (лицензия КОРП): поля поиска «Индексируемые», поля из `INCLUDE` — «Дополнительные» |
+  | Подсказка повторяет порядок измерений, но первое измерение не то | Пересмотреть порядок измерений регистра или запрос (отбор по первому измерению) |
+
+- Часто правильный ответ на подсказку в 1С — **переписать запрос**: отбор в параметрах виртуальной таблицы, `ВЫРАЗИТЬ` вместо точки по составному типу, временная таблица с `ИНДЕКСИРОВАТЬ ПО`. Подсказка лишь показывает, что запросу нечем искать.
+
+Демонстрация: как подсказка появляется, как её прочитать, почему две подсказки лучше закрыть одним индексом и как проверить результат — [`21_missing_index_demo.sql`](../sql/21_missing_index_demo.sql).
 
 ---
 

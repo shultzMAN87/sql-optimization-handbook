@@ -48,6 +48,31 @@ ORDER BY rough_benefit DESC;
    проверить запрос на SARGable/типы/SELECT *, оценить нагрузку записи (updates выше). */
 GO
 
+/* ---------- 3б. Все подсказки Missing Index из XML планов в кэше ---------- */
+WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/sqlserver/2004/07/showplan')
+SELECT TOP (50)
+       qs.execution_count, qs.total_worker_time / 1000 AS total_cpu_ms,
+       SUBSTRING(st.text, qs.statement_start_offset / 2 + 1, 150) AS stmt,
+       g.value('@Impact', 'float') AS impact_pct,
+       g.query('.')                AS missing_index_xml
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+CROSS APPLY qp.query_plan.nodes('//MissingIndexGroup') AS x(g)
+ORDER BY qs.total_worker_time DESC;
+GO
+
+/* ---------- 3в. SQL Server 2019+: какой запрос просил индекс ---------- */
+-- SELECT migsq.user_seeks, migsq.avg_user_impact,
+--        mid.statement, mid.equality_columns, mid.inequality_columns, mid.included_columns,
+--        SUBSTRING(st.text, migsq.last_statement_start_offset / 2 + 1, 200) AS query_text
+-- FROM sys.dm_db_missing_index_group_stats_query migsq
+-- JOIN sys.dm_db_missing_index_groups mig  ON mig.index_group_handle = migsq.group_handle
+-- JOIN sys.dm_db_missing_index_details mid ON mid.index_handle = mig.index_handle
+-- CROSS APPLY sys.dm_exec_sql_text(migsq.last_sql_handle) st
+-- WHERE mid.database_id = DB_ID()
+-- ORDER BY migsq.user_seeks * migsq.avg_total_user_cost * migsq.avg_user_impact DESC;
+
 /* ---------- 4. Существующие индексы таблицы с ключами и INCLUDE ---------- */
 -- EXEC sp_helpindex N'dbo.Orders';
 SELECT i.name, i.type_desc, i.is_unique, i.fill_factor, i.filter_definition,

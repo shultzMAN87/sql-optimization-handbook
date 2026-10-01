@@ -63,6 +63,7 @@
 | [`18_statistics_storage_sampling_demo.sql`](sql/18_statistics_storage_sampling_demo.sql) | StatsSampleDemo | Где хранится статистика, появление `_WA_Sys_` при компиляции, автоматический процент выборки, выборка по страницам (сгруппированные и разбросанные значения), `PERSIST_SAMPLE_PERCENT`, `DBCC CLONEDATABASE` | 29б, 33, 34 |
 | [`19_seek_predicate_demo.sql`](sql/19_seek_predicate_demo.sql) | PredicateDemo | Seek Predicates и Predicate: шесть случаев на одном индексе, Rows Read против Actual Rows, Predicate на Key Lookup, отдельный Filter, текстовый план | 44, 42 |
 | [`20_join_algorithms_demo.sql`](sql/20_join_algorithms_demo.sql) | JoinAlgoDemo | Nested Loops, Merge Join, Hash Match — естественный выбор каждого, сравнение с навязанными хинтом альтернативами, смена алгоритма при изменении условий | 45–47 |
+| [`21_missing_index_demo.sql`](sql/21_missing_index_demo.sql) | MissingIdxDemo | Missing Index: появление подсказок, чтение DMV и XML, порядок equality-столбцов, «слепые» индексы против одного осмысленного, проверка «до/после» | 54 |
 
 ## Примечания к исходным материалам
 
