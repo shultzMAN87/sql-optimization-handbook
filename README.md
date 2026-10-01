@@ -24,6 +24,7 @@
 | [8. Специфика 1С](docs/08-1c-specifics.md) | 68–78, 69а | Трансляция в SQL, имена таблиц, ТЖ и plansql, свой запрос в Profiler по SPID, виртуальные таблицы, ВТ, составные типы, ИЛИ, RLS, итоги регистров, индексы объектов, файловый и клиент-серверный вариант |
 | [9. Практические задания](docs/09-practice.md) | 79–83 | Разбор типовых задач с ходом рассуждения |
 | [Шпаргалка](docs/10-cheatsheet.md) | 1–83 и дополнительные | Короткие ответы |
+| [11. Расследования: кейсы](docs/11-case-studies.md) | Практикум | Метод из 5 шагов, карта сигнатур метрик Duration / CPU / Reads / Writes / RowCount, 11 кейсов: подзапрос на каждую строку, несаргабельное условие, sniffing, блокировка, spill, запрос в цикле, огромный результат, параллелизм, компиляции, холодный кэш, виртуальная таблица 1С |
 
 ## Структура репозитория
 
@@ -64,6 +65,7 @@
 | [`19_seek_predicate_demo.sql`](sql/19_seek_predicate_demo.sql) | PredicateDemo | Seek Predicates и Predicate: шесть случаев на одном индексе, Rows Read против Actual Rows, Predicate на Key Lookup, отдельный Filter, текстовый план | 44, 42 |
 | [`20_join_algorithms_demo.sql`](sql/20_join_algorithms_demo.sql) | JoinAlgoDemo | Nested Loops, Merge Join, Hash Match — естественный выбор каждого, сравнение с навязанными хинтом альтернативами, смена алгоритма при изменении условий | 45–47 |
 | [`21_missing_index_demo.sql`](sql/21_missing_index_demo.sql) | MissingIdxDemo | Missing Index: появление подсказок, чтение DMV и XML, порядок equality-столбцов, «слепые» индексы против одного осмысленного, проверка «до/после» | 54 |
+| [`22_case_studies_demo.sql`](sql/22_case_studies_demo.sql) | CasesDemo | Кейсы расследований с автоматической трассой XE по своей сессии и сводкой метрик по query_hash | кейсы 1–3, 5–7, 9 |
 
 ## Примечания к исходным материалам
 
