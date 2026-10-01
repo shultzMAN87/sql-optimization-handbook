@@ -322,12 +322,73 @@ flowchart LR
 
 ## 30. Как читать `DBCC SHOW_STATISTICS`
 
+### Параметры команды
+
 ```sql
-DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer');                     -- все три части
-DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer') WITH HISTOGRAM;
-SELECT * FROM sys.dm_db_stats_properties(OBJECT_ID(N'dbo.Orders'), 2);                  -- заголовок + modification_counter
-SELECT * FROM sys.dm_db_stats_histogram(OBJECT_ID(N'dbo.Orders'), 2);                   -- гистограмма (2016 SP1 CU2+)
+DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer');
+--                     ^ таблица      ^ какая статистика (target) — ОБЯЗАТЕЛЬНО
 ```
+
+- **Первый параметр** — таблица или индексированное представление, лучше со схемой: `N'dbo.Orders'`.
+- **Второй параметр (target)** — **обязательный**: какую именно статистику показать. У таблицы их обычно много (по каждому индексу и по отдельным столбцам), а команда показывает одну. Без второго параметра будет ошибка. Варианты:
+  - **имя индекса** — статистика индекса называется так же, как индекс;
+  - **имя статистики** — автоматической (`_WA_Sys_00000003_4AB81AF0`) или ручной (`st_Orders_CustomerID`);
+  - **имя столбца** — покажется автоматически созданная статистика по этому столбцу, если она есть.
+
+```sql
+DBCC SHOW_STATISTICS (N'dbo.Orders', N'PK_Orders');             -- статистика первичного ключа
+DBCC SHOW_STATISTICS (N'dbo.Orders', N'st_Orders_CustomerID');  -- ручная статистика
+DBCC SHOW_STATISTICS (N'dbo.Orders', Region);                   -- по имени столбца (если есть _WA_Sys_ по нему)
+```
+
+**Где взять имя статистики** — сначала список статистик таблицы:
+
+```sql
+SELECT s.name AS stats_name, s.auto_created, s.user_created,
+       c.name AS leading_column            -- по нему гистограмма
+FROM sys.stats s
+JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id AND sc.stats_column_id = 1
+JOIN sys.columns c        ON c.object_id = sc.object_id AND c.column_id = sc.column_id
+WHERE s.object_id = OBJECT_ID(N'dbo.Orders');
+```
+
+Любое имя из `stats_name` подставляется вторым параметром.
+
+**Показать только часть вывода.** По умолчанию выводятся все три части. Можно выбрать нужные:
+
+```sql
+DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer') WITH STAT_HEADER;     -- заголовок
+DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer') WITH DENSITY_VECTOR;  -- плотность
+DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer') WITH HISTOGRAM;       -- гистограмма
+DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer') WITH STAT_HEADER, HISTOGRAM;
+```
+
+**По всей таблице сразу — без имени статистики.** Системные функции принимают не имя, а номер `stats_id`, и через `CROSS APPLY` проходят по всем статистикам таблицы. Их результат — обычная таблица: можно фильтровать, сортировать, соединять. Вывод `DBCC` так обработать нельзя.
+
+```sql
+-- Заголовки ВСЕХ статистик таблицы: свежесть, выборка, накопленные изменения
+SELECT s.name, sp.last_updated, sp.rows, sp.rows_sampled, sp.steps, sp.modification_counter
+FROM sys.stats s
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE s.object_id = OBJECT_ID(N'dbo.Orders');
+
+-- Гистограммы всех статистик таблицы одним результатом (SQL Server 2016 SP1 CU2+)
+SELECT s.name, h.step_number, h.range_high_key, h.equal_rows, h.range_rows,
+       h.distinct_range_rows, h.average_range_rows
+FROM sys.stats s
+CROSS APPLY sys.dm_db_stats_histogram(s.object_id, s.stats_id) h
+WHERE s.object_id = OBJECT_ID(N'dbo.Orders')
+ORDER BY s.name, h.step_number;
+```
+
+**Права.** Достаточно права `SELECT` на таблицу (начиная с SQL Server 2012 SP1). Раньше требовались права владельца таблицы или `db_owner`.
+
+> 1С: имена таблиц и индексов служебные, поэтому порядок такой:
+> 1. `ПолучитьСтруктуруХраненияБазыДанных()` — найти таблицу объекта, например `_Document45` ([вопрос 68](08-1c-specifics.md#68-как-запрос-1с-транслируется-в-sql-как-понять-объект-по-имени-таблицы));
+> 2. запрос к `sys.stats` выше с `OBJECT_ID(N'dbo._Document45')` — имена статистик, включая индексы платформы и `_WA_Sys_…`;
+> 3. `DBCC SHOW_STATISTICS (N'dbo._Document45', N'<имя из списка>')` или функции по всей таблице.
+
+### Как читать вывод
 
 **Заголовок:**
 - `Updated` — когда пересчитывали. Важнее даты `modification_counter` из `sys.dm_db_stats_properties`: сколько изменений накопилось с тех пор;
