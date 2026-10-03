@@ -864,6 +864,72 @@ OPTION (RECOMPILE, USE HINT('FORCE_LEGACY_CARDINALITY_ESTIMATION'));    -- ст�
 | Сложные выражения, функции | Вычисляемый столбец со статистикой |
 
 
+### Как узнать, по какой статистике построен план
+
+Первый вопрос при расхождении Estimated и Actual: **по какой статистике оптимизатор оценивал строки и насколько она была свежей**.
+
+**1. В самом плане — `OptimizerStatsUsage`** (SQL Server 2016 SP2, 2017 CU3 и новее). Откройте план (предполагаемый, фактический, из кэша или Query Store), выделите **корневой оператор** (SELECT, INSERT…) и нажмите F4. В узле **OptimizerStatsUsage** — список всех статистик, загруженных для этой инструкции:
+
+| Поле | Что показывает |
+|---|---|
+| `Table`, `Statistics` | Таблица и имя статистики: индекса, `_WA_Sys_…` или ручной |
+| `LastUpdate` | Когда статистику пересчитывали |
+| `ModificationCount` | Сколько изменений накопилось с тех пор — **на момент компиляции** |
+| `SamplingPercent` | С каким процентом выборки она построена |
+
+```xml
+<OptimizerStatsUsage>
+  <StatisticsInfo Database="[MyDb]" Schema="[dbo]" Table="[Orders]"
+                  Statistics="[IX_Orders_CustomerID]" ModificationCount="215000"
+                  SamplingPercent="100" LastUpdate="2026-09-20T03:10:05" />
+  <StatisticsInfo … Statistics="[_WA_Sys_00000003_4AB81AF0]" ModificationCount="0"
+                  SamplingPercent="12.4" LastUpdate="2026-10-01T09:15:44" />
+</OptimizerStatsUsage>
+```
+
+Что из этого видно:
+- **Статистика устарела** — старая `LastUpdate` и большой `ModificationCount` (215 000 изменений на таблице в миллион строк). Первый подозреваемый при недооценке, особенно на растущих датах ([вопрос 35](#35-проблема-восходящего-ключа)).
+- **Мала выборка** — низкий `SamplingPercent` на перекошенных данных ([вопрос 34](#34-fullscan-и-sample)).
+- **Откуда взята гистограмма для второго столбца** составного индекса — из `_WA_Sys_` или ручной статистики ([вопрос 29](#статистика-составного-индекса-гистограмма-только-по-первому-столбцу--а-остальные)).
+
+Ограничение: список дан **на всю инструкцию**, а не по операторам.
+
+**2. Из кэша планов или Query Store — без открытия плана:**
+
+```sql
+WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/sqlserver/2004/07/showplan')
+SELECT TOP (50)
+       SUBSTRING(st.text, qs.statement_start_offset / 2 + 1, 150) AS stmt,
+       s.value('@Table', 'nvarchar(128)')        AS table_name,
+       s.value('@Statistics', 'nvarchar(128)')   AS stats_name,
+       s.value('@ModificationCount', 'bigint')   AS modifications_at_compile,
+       s.value('@SamplingPercent', 'float')      AS sampling_pct,
+       s.value('@LastUpdate', 'datetime2')       AS stats_last_update,
+       qs.creation_time                          AS plan_compiled
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+CROSS APPLY qp.query_plan.nodes('//OptimizerStatsUsage/StatisticsInfo') AS x(s)
+WHERE st.text LIKE N'%dbo.Orders%' AND st.text NOT LIKE N'%dm_exec%'
+ORDER BY qs.total_logical_reads DESC;
+```
+
+Приём: сравнить `stats_last_update` с `plan_compiled`. Если статистику обновили **после** компиляции плана, план построен по старой статистике и будет перекомпилирован при следующем вызове ([вопрос 14](02-query-pipeline.md#14-перекомпиляция-и-её-причины)). Query Store хранит XML планов, поэтому так же можно посмотреть, по какой статистике был построен **старый** план регрессировавшего запроса ([вопрос 60](06-params-cache.md#60-query-store)).
+
+**3. Какая статистика использовалась для конкретной оценки** — инструменты исследования, **только на тестовом сервере**:
+
+| Средство | Что даёт | Ограничения |
+|---|---|---|
+| `OPTION (RECOMPILE, QUERYTRACEON 3604, QUERYTRACEON 2363)` | На вкладке Messages — ход оценки кардинальности новой моделью (CE 120+): применённые «калькуляторы» и загруженные статистики | Недокументированный, нужен sysadmin, вывод объёмный |
+| `QUERYTRACEON 9292` и `9204` (+ 3604) | Какие статистики оптимизатор счёл «интересными» и какие реально загрузил | Недокументированные, для старой модели (CE 70) |
+| Extended Events `query_optimizer_estimate_cardinality` | По каждой оценке: входная статистика, расчёт, результат. Номер в событии совпадает с атрибутом `StatsCollectionId` оператора в XML-плане — так оценка связывается с оператором | Канал Debug, событие тяжёлое: только тест и с фильтром по сессии |
+
+**4. Создавалась ли или обновлялась статистика во время компиляции.** Событие Extended Events `auto_stats` (в Profiler — **Auto Stats**) показывает, что при компиляции запроса статистика создавалась (`_WA_Sys_`) или синхронно обновлялась. Это объясняет «первый запуск долгий» ([вопрос 33](#как-именно-создаётся-автостатистика)). Косвенный признак — большой `CompileTime` у SELECT в фактическом плане.
+
+> 1С: текстовый план из технологического журнала (`plansql`) не содержит `OptimizerStatsUsage`. Нужен **XML-план**: из Profiler или XE (событие Showplan, [вопрос 69а](08-1c-specifics.md#69а-практика-как-поймать-свой-запрос-1с-в-profiler-и-получить-его-план)), из кэша (запрос выше) или из Query Store. Имена таблиц и статистик служебные (`_AccumRg77`, `_InfoRg144_1`, `_WA_Sys_…`) — переводятся через `ПолучитьСтруктуруХраненияБазыДанных()`.
+
+Практика — блок 13 [`02_statistics_demo.sql`](../sql/02_statistics_demo.sql) и блок 11 [`07_plan_cache_top_queries.sql`](../sql/07_plan_cache_top_queries.sql).
+
 Почему оценка особенно часто ломается на выходе вложенных запросов и как это лечат временные таблицы — [вопрос 39а](#39а-вложенный-запрос-или-временная-таблица-взгляд-оптимизатора).
 ---
 

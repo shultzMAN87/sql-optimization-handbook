@@ -351,6 +351,41 @@ SELECT COUNT(*) FROM dbo.Orders WHERE Region = N'Москва' AND CustomerID = 
 GO
 
 
+/* ---------- БЛОК 13. По какой статистике построен план: OptimizerStatsUsage (вопрос 39) ---------- */
+USE StatsDemo;
+GO
+-- 13.1 Выполните с фактическим планом (Ctrl+M) и откройте свойства SELECT (F4) -> OptimizerStatsUsage:
+--      видно IX_Orders_Region_Customer (Region) и статистику по CustomerID, их LastUpdate,
+--      ModificationCount и SamplingPercent.
+SELECT COUNT(*) FROM dbo.Orders WHERE Region = N'Казань' AND CustomerID = 1 OPTION (RECOMPILE);
+GO
+-- 13.2 Изменим данные без обновления статистики и посмотрим, как это отразится в плане
+ALTER DATABASE StatsDemo SET AUTO_UPDATE_STATISTICS OFF;
+UPDATE TOP (5000) dbo.Orders SET Region = N'Казань' WHERE Region = N'Москва';
+GO
+SELECT COUNT(*) FROM dbo.Orders WHERE Region = N'Казань' AND CustomerID = 1 OPTION (RECOMPILE);
+-- В OptimizerStatsUsage у статистики по Region ModificationCount вырос на 5 000,
+-- LastUpdate прежний: оценка построена по устаревшей гистограмме.
+GO
+-- 13.3 То же из кэша планов, без открытия плана
+SELECT COUNT(*) FROM dbo.Orders WHERE Region = N'Казань';   -- кэшируемый (без RECOMPILE)
+GO
+WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/sqlserver/2004/07/showplan')
+SELECT SUBSTRING(st.text, qs.statement_start_offset / 2 + 1, 120) AS stmt,
+       s.value('@Statistics', 'nvarchar(128)')  AS stats_name,
+       s.value('@ModificationCount', 'bigint')  AS modifications_at_compile,
+       s.value('@SamplingPercent', 'float')     AS sampling_pct,
+       s.value('@LastUpdate', 'datetime2')      AS stats_last_update
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+CROSS APPLY qp.query_plan.nodes('//OptimizerStatsUsage/StatisticsInfo') AS x(s)
+WHERE st.text LIKE N'%Region = N''Казань''%' AND st.text NOT LIKE N'%dm_exec%';
+GO
+ALTER DATABASE StatsDemo SET AUTO_UPDATE_STATISTICS ON;
+GO
+
+
 /* ---------- Уборка (раскомментировать при необходимости) ---------- */
 -- USE master;
 -- ALTER DATABASE StatsDemo SET SINGLE_USER WITH ROLLBACK IMMEDIATE;

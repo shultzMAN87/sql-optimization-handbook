@@ -161,3 +161,24 @@ GO
 --   UPDATE STATISTICS после изменений     -> Statistics changed
 --   EXEC sp_recompile N'dbo.T'           -> следующий вызов перекомпилируется
 --   SET ANSI_NULLS OFF внутри пакета      -> Set option change
+
+/* ---------- 11. По какой статистике построены планы в кэше (вопрос 39) ---------- */
+-- Подставьте фильтр текста. Требуется SQL Server 2016 SP2 / 2017 CU3+ (элемент OptimizerStatsUsage).
+WITH XMLNAMESPACES (DEFAULT 'http://schemas.microsoft.com/sqlserver/2004/07/showplan')
+SELECT TOP (50)
+       SUBSTRING(st.text, qs.statement_start_offset / 2 + 1, 150) AS stmt,
+       s.value('@Table', 'nvarchar(128)')        AS table_name,
+       s.value('@Statistics', 'nvarchar(128)')   AS stats_name,
+       s.value('@ModificationCount', 'bigint')   AS modifications_at_compile,
+       s.value('@SamplingPercent', 'float')      AS sampling_pct,
+       s.value('@LastUpdate', 'datetime2')       AS stats_last_update,
+       qs.creation_time                          AS plan_compiled
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan(qs.plan_handle) qp
+CROSS APPLY qp.query_plan.nodes('//OptimizerStatsUsage/StatisticsInfo') AS x(s)
+WHERE st.text LIKE N'%dbo.Orders%' AND st.text NOT LIKE N'%dm_exec%'
+ORDER BY qs.total_logical_reads DESC;
+-- stats_last_update > plan_compiled  -> план строился по старой статистике (будет перекомпиляция)
+-- большой modifications_at_compile    -> план строился по устаревшей статистике
+GO
