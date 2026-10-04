@@ -238,6 +238,35 @@ SELECT * FROM dbo.Orders WHERE ID = 5
 
 `query_hash` и `query_plan_hash` появились в SQL Server 2008 как инструмент диагностики. Они есть в `sys.dm_exec_query_stats`, `sys.dm_exec_requests` и в Query Store. Типичная задача: найти тысячу ad hoc запросов, которые засоряют кэш и каждый раз компилируются заново. У них разные `sql_handle`, но одинаковый `query_hash`. Искать план по `query_hash` сервер не может в принципе: чтобы его вычислить, запрос уже нужно разобрать и алгебраизировать, а поиск в кэше нужен как раз для того, чтобы этого не делать.
 
+**Пример на реальных планах 1С: разный текст — один план.** Два запроса 1С отличаются только местом условия по дате: в `ГДЕ` (ббб1) и в условии соединения `ПО` (ббб2). Платформа перевела их в **два разных SQL-текста** ([раздел 13](13-joins-real-plans.md#3-nested-loops-мало-строк-сверху--индекс-снизу-серия-ббб), файлы [`bbb1`](../plans/bbb1_nested_loops_where.sqlplan) и [`bbb2`](../plans/bbb2_nested_loops_on.sqlplan)):
+
+```sql
+-- ббб1:  … INNER JOIN _Document15050 T3 ON (T1._Document15050_IDRRef = T3._IDRRef)
+--          WHERE (T3._Date_Time > @P1)
+-- ббб2:  … INNER JOIN _Document15050 T3 ON (T1._Document15050_IDRRef = T3._IDRRef) AND (T3._Date_Time > @P1)
+```
+
+| Идентификатор | ббб1 | ббб2 | Почему |
+|---|---|---|---|
+| `sql_handle`, `plan_handle` | свой | свой | Тексты разные → **две записи в кэше, две компиляции** |
+| `QueryHash` | `0x4F91E2E4A31DF573` | `0x1964509F937F8B51` | Разные логические деревья (условие в разных местах) |
+| `QueryPlanHash` | `0x00C71BD3DBEE6C91` | `0x00C71BD3DBEE6C91` | **Одинаковый физический план**: при упрощении условие в обоих случаях опущено к таблице документа ([вопрос 23](03-optimizer.md#23-упрощение-simplification)) |
+
+Второй запрос **не** взял план первого из кэша: он скомпилировался сам и пришёл к такому же плану. В свойствах SELECT видны только `QueryHash` и `QueryPlanHash`, оба — для анализа. Ключ поиска в кэше (текст + атрибуты сеанса) в плане не показывается. Совпадение `QueryPlanHash` не означает, что план переиспользован. Проверка:
+
+```sql
+SELECT qs.sql_handle, qs.plan_handle, qs.query_hash, qs.query_plan_hash, qs.execution_count,
+       SUBSTRING(st.text, 1, 200) AS text_start
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+WHERE st.text LIKE N'%_Document15050_VT61797%_Date_Time%' AND st.text NOT LIKE N'%dm_exec%';
+-- ожидаемо: две строки — разные sql_handle / plan_handle / query_hash, одинаковый query_plan_hash
+```
+
+**Зачем нужен `query_plan_hash`:**
+- найти **разные запросы с одинаковым планом**, как здесь;
+- заметить, что у **одного и того же запроса сменился план**: `query_hash` прежний, а `query_plan_hash` после перекомпиляции другой. Классический сигнал parameter sniffing и регрессии плана ([вопросы 57, 60](06-params-cache.md#57-диагностика)).
+
 ### Проверка на практике
 
 ```sql
