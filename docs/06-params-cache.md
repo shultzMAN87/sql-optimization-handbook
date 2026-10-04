@@ -175,6 +175,38 @@ ORDER BY qs.total_logical_reads DESC;     -- или total_worker_time / total_el
 
 Для истории используют Query Store.
 
+
+### Откуда взять план и сколько он хранится
+
+| Источник | Какой план | Сколько хранится | Как достать |
+|---|---|---|---|
+| **Кэш планов** | Предполагаемый (без фактических строк) | Пока не вытеснен, не перекомпилирован, кэш не очищен. **Перезапуск сервера — пропадает** | `sys.dm_exec_query_plan(plan_handle)` — запрос выше |
+| **Кэш + `LAST_QUERY_PLAN_STATS`** (SQL Server 2019+) | **Последний фактический**: Actual Rows, Executions | Так же, как кэш | `sys.dm_exec_query_plan_stats(plan_handle)` |
+| **Query Store** | Предполагаемые, **вся история планов** запроса | В базе: **переживает перезапуск**, уезжает с бэкапом | `sys.query_store_plan.query_plan` ([вопрос 60](#60-query-store)) |
+| **Profiler / XE**, сохранённый `.sqlplan` | Фактический (Showplan XML Statistics Profile / `query_post_execution_showplan`) | Это файл | [Вопрос 69а](08-1c-specifics.md#69а-практика-как-поймать-свой-запрос-1с-в-profiler-и-получить-его-план) |
+
+```sql
+-- Последний фактический план из кэша (SQL Server 2019+). Включается на базу, накладные расходы небольшие.
+ALTER DATABASE SCOPED CONFIGURATION SET LAST_QUERY_PLAN_STATS = ON;
+
+SELECT qs.execution_count, qs.last_execution_time, qps.query_plan
+FROM sys.dm_exec_query_stats qs
+CROSS APPLY sys.dm_exec_sql_text(qs.sql_handle) st
+CROSS APPLY sys.dm_exec_query_plan_stats(qs.plan_handle) qps
+WHERE st.text LIKE N'%_Document15050%' AND st.text NOT LIKE N'%dm_exec%';
+
+-- История планов из Query Store (переживает перезапуск)
+SELECT q.query_id, p.plan_id, rs.count_executions, rs.avg_logical_io_reads,
+       TRY_CAST(p.query_plan AS xml) AS query_plan
+FROM sys.query_store_query_text qt
+JOIN sys.query_store_query q          ON q.query_text_id = qt.query_text_id
+JOIN sys.query_store_plan p           ON p.query_id = q.query_id
+JOIN sys.query_store_runtime_stats rs ON rs.plan_id = p.plan_id
+WHERE qt.query_sql_text LIKE N'%_Document15050%';
+```
+
+**Ловушка для 1С.** Если выполнить скопированный SQL в SSMS, в кэше будет **отдельная** запись с другими SET-опциями (`ARITHABORT ON`). Это ваш план, а не план сервера 1С ([вопрос 13](02-query-pipeline.md#13-кэш-планов-когда-план-берётся-из-кэша-а-когда-компилируется)). Отличить записи можно по `sys.dm_exec_plan_attributes(plan_handle)` → `set_options` и по `execution_count`. Совпадение `QueryPlanHash` у обоих планов означает, что планы одинаковые.
+
 ---
 
 ## 60. Query Store

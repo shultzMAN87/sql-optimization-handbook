@@ -1,6 +1,6 @@
 # 11. Расследования: кейсы по метрикам Profiler и Extended Events
 
-[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md)
+[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разбор реального плана →](12-real-plan-walkthrough.md)
 
 Практикум: «запрос тормозит — как разобраться». Каждый кейс построен одинаково:
 - **жалоба** и **запрос**;
@@ -513,4 +513,4 @@ SELECT * FROM dbo.Orders WHERE OrderDate >= '20200101';
 
 ---
 
-[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md)
+[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разбор реального плана →](12-real-plan-walkthrough.md)
