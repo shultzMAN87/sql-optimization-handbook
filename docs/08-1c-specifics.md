@@ -112,7 +112,7 @@ N'@P1 datetime2(3)', '4026-01-01 00:00:00'
 </config>
 ```
 
-Для MS SQL `planSQLText` — это текстовый план **с фактическими значениями**: Rows и Executes по операторам, аналог `SET STATISTICS PROFILE`. Estimated в нём нет. Событие `SDBL` показывает запрос на внутреннем языке, до трансляции в SQL.
+Для MS SQL `planSQLText` — это текстовый план **с фактическими значениями**: Rows и Executes по операторам, аналог `SET STATISTICS PROFILE`. Estimated в нём нет. Событие `SDBL` показывает запрос на внутреннем языке, до трансляции в SQL. Подсказок **Missing Index** в текстовом плане нет — они есть только в XML-плане (Profiler, XE, SSMS) и в DMV `sys.dm_db_missing_index_*`.
 
 **Воспроизведение в SSMS — ловушки:**
 1. Выполнять **как `sp_executesql`** с теми же типами параметров. Если подставить литералы, будет другой план.
@@ -352,6 +352,8 @@ LEFT JOIN dbo._Document45 T2 ON T1._RecorderTRef = 0x0000002D AND T1._RecorderRR
 LEFT JOIN dbo._Document46 T3 ON T1._RecorderTRef = 0x0000002E AND T1._RecorderRRef = T3._IDRRef
 -- … ещё 28 LEFT JOIN
 ```
+
+По той же причине такой отбор не даёт и подсказки **Missing Index**: соединения идут по `_IDRRef` (кластерный индекс уже есть), а условие на `CASE` несаргабельно — сервер «молчит», хотя запрос читает всё ([пример в вопросе 54](05-plans-operators.md#пример-на-базе-1с-где-искать-подсказку-и-почему-её-может-не-быть)).
 
 **Как избежать:**
 
