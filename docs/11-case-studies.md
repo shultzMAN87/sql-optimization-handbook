@@ -1,6 +1,6 @@
 # 11. Расследования: кейсы по метрикам Profiler и Extended Events
 
-[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разбор реального плана →](12-real-plan-walkthrough.md)
+[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разборы реальных планов →](12-real-plan-walkthrough.md)
 
 Практикум: «запрос тормозит — как разобраться». Каждый кейс построен одинаково:
 - **жалоба** и **запрос**;
@@ -585,4 +585,4 @@ WHERE %%lockres%% = N'(75cdabf133d3)';
 
 ---
 
-[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разбор реального плана →](12-real-plan-walkthrough.md)
+[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разборы реальных планов →](12-real-plan-walkthrough.md)
