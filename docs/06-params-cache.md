@@ -78,15 +78,7 @@ SELECT … WHERE ClientID = @c;
 | Локальная переменная `DECLARE` | Нет | Неизвестно при компиляции → оценка по плотности |
 | Локальная переменная + `OPTION (RECOMPILE)` | Да | Инструкция компилируется в момент выполнения, значение уже есть |
 
-**Где увидеть подсмотренное значение.** В плане, в свойствах корневого оператора SELECT → **Parameter List**:
-- **Parameter Compiled Value** — значение, под которое план **построен**. Есть и в плане из кэша, и в фактическом;
-- **Parameter Runtime Value** — значение **текущего** выполнения. Есть только в фактическом плане.
-
-```xml
-<ColumnReference Column="@c" ParameterCompiledValue="(42)" ParameterRuntimeValue="(1)" />
-```
-
-Разные значения вместе с сильным расхождением `Estimated` и `Actual` rows — классический parameter sniffing. Как искать такие планы — [вопрос 57](#57-диагностика), воспроизведение — блоки 1–3 [`08_parameter_sniffing_demo.sql`](../sql/08_parameter_sniffing_demo.sql).
+**Где увидеть подсмотренное значение** — `Parameter Compiled Value` в свойствах корневого SELECT, подробно в [вопросе 57](#57-диагностика). Воспроизведение — блоки 1–3 [`08_parameter_sniffing_demo.sql`](../sql/08_parameter_sniffing_demo.sql).
 
 **Пример для 1С.** Регистр накопления «ТоварыНаСкладах», у измерения `Склад` установлено «Индексировать» (индекс «Склад + Период + Регистратор + НомерСтроки»). На центральном складе 90% движений, на остальных — единицы процентов.
 
@@ -107,7 +99,7 @@ SELECT … WHERE ClientID = @c;
 
 ## 57. Диагностика
 
-1. **Parameter Compiled Value и Runtime Value.** Фактический план → корневой SELECT → `Parameter List`. В XML это `<ColumnReference Column="@ClientID" ParameterCompiledValue="(7)" ParameterRuntimeValue="(1)"/>`. Значения разные, и есть огромное расхождение `Estimated` и `Actual` rows — это классика.
+1. **Parameter Compiled Value и Runtime Value.** Фактический план → корневой SELECT → `Parameter List`. **Compiled Value** — значение, под которое план построен, **Runtime Value** — значение текущего выполнения (есть только в фактическом плане). В XML это `<ColumnReference Column="@ClientID" ParameterCompiledValue="(7)" ParameterRuntimeValue="(1)"/>`. Значения разные, и есть огромное расхождение `Estimated` и `Actual` rows — это классика.
 2. **План из кэша** содержит только `ParameterCompiledValue`: он показывает, **под какое значение** план построен.
 3. **Разброс метрик одного плана в кэше:** `min_logical_reads` и `max_logical_reads`, `min/max_elapsed_time` в `sys.dm_exec_query_stats` отличаются на порядки (запрос 2 в [`07_plan_cache_top_queries.sql`](../sql/07_plan_cache_top_queries.sql)).
 4. **Query Store:** отчёты *Queries With High Variation* и *Regressed Queries*, на *Plan Summary* несколько plan_id у одного query_id.

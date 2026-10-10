@@ -41,22 +41,7 @@ flowchart LR
 | Автостатистика | Автоматически при компиляции, если столбец есть в WHERE/JOIN/GROUP BY, статистики по нему нет и включён `AUTO_CREATE_STATISTICS` | Только **одноколоночная**, по выборке. Имя вида `_WA_Sys_00000003_4AB81AF0`: номер столбца и object_id таблицы в шестнадцатеричном виде |
 | Вручную | `CREATE STATISTICS` | Можно **многоколоночную** (для коррелированных столбцов), **фильтрованную** (`WHERE …`), с `FULLSCAN` |
 
-Как статистика обновляется и когда устаревает — [вопросы 33–35](#33-автосоздание-и-автообновление-статистики-порог).
-
-Список статистик таблицы:
-
-```sql
-SELECT s.name, s.auto_created, s.user_created, s.has_filter, s.filter_definition,
-       STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY sc.stats_column_id) AS columns,   -- 2017+
-       sp.last_updated, sp.rows, sp.rows_sampled, sp.steps, sp.modification_counter
-FROM sys.stats s
-JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id
-JOIN sys.columns c        ON c.object_id = sc.object_id AND c.column_id = sc.column_id
-CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
-WHERE s.object_id = OBJECT_ID(N'dbo.Orders')
-GROUP BY s.name, s.auto_created, s.user_created, s.has_filter, s.filter_definition,
-         sp.last_updated, sp.rows, sp.rows_sampled, sp.steps, sp.modification_counter;
-```
+Как статистика обновляется и когда устаревает — [вопросы 33–35](#33-автосоздание-и-автообновление-статистики-порог). Список статистик таблицы со столбцами и свежестью — запрос в [вопросе 30](#где-взять-имя-статистики).
 
 ### Как выглядит статистика: три части
 
@@ -64,13 +49,7 @@ GROUP BY s.name, s.auto_created, s.user_created, s.has_filter, s.filter_definiti
 
 *Пример — индекс `(Region, CustomerID)` на таблице из [`02_statistics_demo.sql`](../sql/02_statistics_demo.sql): 100 000 заказов, Москва 50%, Владивосток 3%.*
 
-**1. Заголовок (STAT_HEADER) — «паспорт».** Отвечает на вопрос «можно ли этой статистике верить»:
-- `Updated` — когда пересчитывали. Первое, на что смотреть при подозрении на устаревание;
-- `Rows` и `Rows Sampled` — сколько строк было и сколько реально прочитали. Если меньше — статистика построена по выборке и приблизительна;
-- `Steps` — число шагов гистограммы;
-- остальное: `Average key length`, `String Index` (строковая сводка для оценки `LIKE`), `Filter Expression` / `Unfiltered Rows` (для фильтрованной статистики). `Density` — устаревшее поле, не используется.
-
-Современный аналог — `sys.dm_db_stats_properties`, которая дополнительно показывает **`modification_counter`**: сколько изменений накопилось в ведущем столбце с последнего пересчёта.
+**1. Заголовок (STAT_HEADER) — «паспорт».** Отвечает на вопрос «можно ли этой статистике верить»: когда пересчитывали (`Updated`), сколько строк было и сколько из них прочитали (`Rows`, `Rows Sampled`), сколько шагов в гистограмме (`Steps`). Все поля заголовка — в [вопросе 30](#как-читать-вывод). Современный аналог — `sys.dm_db_stats_properties`, которая дополнительно показывает **`modification_counter`**: сколько изменений накопилось в ведущем столбце с последнего пересчёта.
 
 **2. Вектор плотности (DENSITY_VECTOR) — «насколько значения уникальны».**
 - **Плотность = 1 / число уникальных значений.** 5 регионов → 0,2: одно значение встречается в среднем в 20% строк. 100 000 уникальных ID → 0,00001: одна строка на значение.
@@ -102,19 +81,7 @@ GROUP BY s.name, s.auto_created, s.user_created, s.has_filter, s.filter_definiti
 - **автостатистика `_WA_Sys_…`**. При включённом `AUTO_CREATE_STATISTICS` она создаётся, когда столбец встречается в WHERE, JOIN или GROUP BY, а статистики, где он **ведущий**, нет. Статистика составного индекса, где столбец второй, не считается, поэтому для `CustomerID` автостатистика появится, несмотря на индекс `(Region, CustomerID)`;
 - **ручная статистика**: `CREATE STATISTICS st_Orders_CustomerID ON dbo.Orders (CustomerID)` — в скрипте 02 создаётся именно она.
 
-Какие статистики есть у таблицы и какой столбец в каждой ведущий:
-
-```sql
-SELECT s.name, s.auto_created, s.user_created,
-       c.name AS column_name, sc.stats_column_id    -- 1 = ведущий, по нему гистограмма
-FROM sys.stats s
-JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id
-JOIN sys.columns c        ON c.object_id = sc.object_id AND c.column_id = sc.column_id
-WHERE s.object_id = OBJECT_ID(N'dbo.Orders')
-ORDER BY s.name, sc.stats_column_id;
-```
-
-Какие статистики оптимизатор реально использовал для конкретного запроса, показывает свойство корневого оператора плана **`OptimizerStatsUsage`** (SQL Server 2016 SP2 / 2017 и новее): имя статистики, дата обновления, число изменений с тех пор.
+Какие статистики есть у таблицы и какой столбец в каждой ведущий, показывает запрос из [вопроса 30](#где-взять-имя-статистики): в списке столбцов статистики ведущий идёт первым. Какие статистики оптимизатор реально использовал для конкретного запроса, показывает свойство корневого оператора плана **`OptimizerStatsUsage`** (SQL Server 2016 SP2 / 2017 и новее): имя статистики, дата обновления, число изменений с тех пор.
 
 **Как собирается оценка:**
 
@@ -218,14 +185,7 @@ WHERE object_id = OBJECT_ID(N'dbo.Orders') AND index_id IN (0, 1);
 
 ### 3. Счётчик изменений — сколько накопилось с тех пор
 
-```sql
-SELECT s.name, sp.last_updated, sp.rows, sp.rows_sampled, sp.modification_counter
-FROM sys.stats s
-CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
-WHERE s.object_id = OBJECT_ID(N'dbo.Orders');
-```
-
-Внутри он хранится по каждому столбцу во внутренней таблице `sys.sysrscols` (в старых версиях его называли `colmodctr`). INSERT и DELETE увеличивают счётчик, UPDATE — только если меняется сам столбец. При пересчёте статистики он обнуляется. По нему сервер решает:
+Это `modification_counter` в `sys.dm_db_stats_properties` (запрос — в [вопросе 30](#где-взять-имя-статистики)). Внутри он хранится по каждому столбцу во внутренней таблице `sys.sysrscols` (в старых версиях его называли `colmodctr`). INSERT и DELETE увеличивают счётчик, UPDATE — только если меняется сам столбец. При пересчёте статистики он обнуляется. По нему сервер решает:
 - пора ли автоматически обновить статистику — порог 500 + 20% или √(1000 × n) ([вопрос 33](#33-автосоздание-и-автообновление-статистики-порог));
 - устарел ли закэшированный план ([вопрос 14](02-query-pipeline.md#14-перекомпиляция-и-её-причины)).
 
@@ -341,15 +301,23 @@ DBCC SHOW_STATISTICS (N'dbo.Orders', N'st_Orders_CustomerID');  -- ручная 
 DBCC SHOW_STATISTICS (N'dbo.Orders', Region);                   -- по имени столбца (если есть _WA_Sys_ по нему)
 ```
 
-**Где взять имя статистики** — сначала список статистик таблицы:
+#### Где взять имя статистики
+
+Сначала — список статистик таблицы. Этот запрос используется во всём разделе: имя, происхождение, столбцы (первый — ведущий, по нему гистограмма) и свежесть.
 
 ```sql
-SELECT s.name AS stats_name, s.auto_created, s.user_created,
-       c.name AS leading_column            -- по нему гистограмма
+SELECT s.name AS stats_name, s.auto_created, s.user_created, s.has_filter, s.filter_definition,
+       STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY sc.stats_column_id) AS columns,   -- 2017+; первый — ведущий
+       sp.last_updated, sp.rows, sp.rows_sampled, sp.steps, sp.modification_counter
 FROM sys.stats s
-JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id AND sc.stats_column_id = 1
+JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id
 JOIN sys.columns c        ON c.object_id = sc.object_id AND c.column_id = sc.column_id
-WHERE s.object_id = OBJECT_ID(N'dbo.Orders');
+CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
+WHERE s.object_id = OBJECT_ID(N'dbo.Orders')            -- для 1С: N'dbo._Document45' и т.п.
+-- AND s.auto_created = 1                               -- только автостатистика _WA_Sys_
+GROUP BY s.name, s.auto_created, s.user_created, s.has_filter, s.filter_definition,
+         sp.last_updated, sp.rows, sp.rows_sampled, sp.steps, sp.modification_counter
+ORDER BY s.name;
 ```
 
 Любое имя из `stats_name` подставляется вторым параметром.
@@ -363,15 +331,9 @@ DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer') WITH HISTOGRA
 DBCC SHOW_STATISTICS (N'dbo.Orders', N'IX_Orders_Region_Customer') WITH STAT_HEADER, HISTOGRAM;
 ```
 
-**По всей таблице сразу — без имени статистики.** Системные функции принимают не имя, а номер `stats_id`, и через `CROSS APPLY` проходят по всем статистикам таблицы. Их результат — обычная таблица: можно фильтровать, сортировать, соединять. Вывод `DBCC` так обработать нельзя.
+**По всей таблице сразу — без имени статистики.** Системные функции принимают не имя, а номер `stats_id`, и через `CROSS APPLY` проходят по всем статистикам таблицы. Их результат — обычная таблица: можно фильтровать, сортировать, соединять. Вывод `DBCC` так обработать нельзя. Заголовки всех статистик даёт запрос выше (`sys.dm_db_stats_properties`), гистограммы — этот:
 
 ```sql
--- Заголовки ВСЕХ статистик таблицы: свежесть, выборка, накопленные изменения
-SELECT s.name, sp.last_updated, sp.rows, sp.rows_sampled, sp.steps, sp.modification_counter
-FROM sys.stats s
-CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
-WHERE s.object_id = OBJECT_ID(N'dbo.Orders');
-
 -- Гистограммы всех статистик таблицы одним результатом (SQL Server 2016 SP1 CU2+)
 SELECT s.name, h.step_number, h.range_high_key, h.equal_rows, h.range_rows,
        h.distinct_range_rows, h.average_range_rows
@@ -623,17 +585,7 @@ sequenceDiagram
 - **Живёт постоянно** и сама не удаляется, даже если запрос с таким условием больше не выполнится. Удаляется только вручную: `DROP STATISTICS dbo.Orders._WA_Sys_00000003_4AB81AF0`.
 - **Обновляется** по общим правилам: порог изменений (выше) или регламент `UPDATE STATISTICS` / `sp_updatestats`.
 
-Автоматически созданные статистики таблицы и их свежесть:
-
-```sql
-SELECT s.name, c.name AS column_name, sp.last_updated,
-       sp.rows, sp.rows_sampled, sp.modification_counter
-FROM sys.stats s
-JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id AND sc.stats_column_id = 1
-JOIN sys.columns c        ON c.object_id = sc.object_id AND c.column_id = sc.column_id
-CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
-WHERE s.object_id = OBJECT_ID(N'dbo.Orders') AND s.auto_created = 1;
-```
+Автоматически созданные статистики таблицы и их свежесть — запрос из [вопроса 30](#где-взять-имя-статистики) с условием `s.auto_created = 1`.
 
 > 1С: так появляются гистограммы по второму и следующим измерениям регистров и по реквизитам, которые попадают в отборы. В рабочих базах 1С сотни и тысячи `_WA_Sys_…` — это нормально. Важно, чтобы регламент обновлял **все** статистики, а не только статистики индексов. Скрипт, который перебирает только индексы, оставит автостатистику устаревать.
 
@@ -904,21 +856,7 @@ OPTION (RECOMPILE, USE HINT('FORCE_LEGACY_CARDINALITY_ESTIMATION'));    -- ст�
 #### Если статистик в списке несколько: как найти нужную
 
 В `OptimizerStatsUsage` попадают **все статистики, которые оптимизатор загружал**, пока рассматривал запрос: статистики индексов-кандидатов, статистики столбцов из условий и соединений. Это не только та, что определила итоговую оценку. Чтобы найти, по какой именно оценено условие:
-1. **Сопоставьте имена со столбцами.** Гистограмма есть только по **первому** столбцу статистики. Нужна та, у которой первый столбец — столбец из условия (`WHERE`, `ON`):
-
-   ```sql
-   SELECT s.name AS stats_name, s.auto_created, s.user_created,
-          STRING_AGG(c.name, ', ') WITHIN GROUP (ORDER BY sc.stats_column_id) AS columns,   -- 2017+
-          sp.last_updated, sp.modification_counter
-   FROM sys.stats s
-   JOIN sys.stats_columns sc ON sc.object_id = s.object_id AND sc.stats_id = s.stats_id
-   JOIN sys.columns c        ON c.object_id = sc.object_id AND c.column_id = sc.column_id
-   CROSS APPLY sys.dm_db_stats_properties(s.object_id, s.stats_id) sp
-   WHERE s.object_id = OBJECT_ID(N'dbo._Document15050')
-   GROUP BY s.name, s.auto_created, s.user_created, sp.last_updated, sp.modification_counter
-   ORDER BY s.name;
-   ```
-
+1. **Сопоставьте имена со столбцами.** Гистограмма есть только по **первому** столбцу статистики. Нужна та, у которой первый столбец — столбец из условия (`WHERE`, `ON`). Столбцы каждой статистики покажет запрос из [вопроса 30](#где-взять-имя-статистики).
 2. **Посмотрите индекс в операторе чтения.** Если условие стоит в Seek Predicates индекса `X`, его оценка почти всегда сделана по статистике `X` (её имя совпадает с именем индекса).
 3. **Для условий в Predicate и соединений** нужная статистика — по столбцу условия: статистика индекса, где этот столбец первый, `_WA_Sys_…` или ручная.
 4. **Точно по каждой оценке** — только инструментами исследования из пункта 3 ниже (XE `query_optimizer_estimate_cardinality`, флаги трассировки).
@@ -1122,7 +1060,7 @@ FROM #x x JOIN dbo.Customers c ON c.CustomerID = x.CustomerID;
 
 Итого: статистика `#temp` рассчитывается **после выполнения предыдущего шага, но до выполнения шага, который её читает** — в момент его компиляции. Это та же автостатистика `_WA_Sys_`, что у обычных таблиц ([вопрос 33](#как-именно-создаётся-автостатистика)), только по данным, которые только что получены.
 
-- **Индекс создан до заполнения** (`CREATE TABLE` с индексом, потом `INSERT`): статистика индекса в момент создания пустая. При компиляции следующей инструкции сервер видит, что изменений больше порога (у временных таблиц он маленький: 6, затем 500 строк), **пересчитывает** статистику по заполненной таблице и только потом строит план.
+- **Индекс создан до заполнения** (`CREATE TABLE` с индексом, потом `INSERT`): статистика индекса в момент создания пустая. При компиляции следующей инструкции сервер видит, что изменений больше порога (у временных таблиц он маленький, [вопрос 14](02-query-pipeline.md#14-перекомпиляция-и-её-причины)), **пересчитывает** статистику по заполненной таблице и только потом строит план.
 - **Повторный вызов процедуры:** план инструкции 2 закэширован, а в `#x` теперь, скажем, 50 000 строк. Порог превышен — статистика пересчитывается, инструкция перекомпилируется под новые числа ([вопрос 14](02-query-pipeline.md#14-перекомпиляция-и-её-причины)). Частые перекомпиляции у временных таблиц — цена за точность.
 - **У табличной переменной этого механизма нет:** статистика не создаётся никогда, в SQL Server 2019+ известно только число строк.
 
