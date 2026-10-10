@@ -4,6 +4,8 @@
 
 Вопросы 1–10 и дополнительный 1а. Практика: [`01_scan_vs_seek_demo.sql`](../sql/01_scan_vs_seek_demo.sql), [`06_heap_forwarded_records.sql`](../sql/06_heap_forwarded_records.sql), [`10_index_maintenance_audit.sql`](../sql/10_index_maintenance_audit.sql), [`14_row_overflow_lob_demo.sql`](../sql/14_row_overflow_lob_demo.sql).
 
+**Связанные разборы:** [П2, разбор 1 — Key Lookup и динамический Seek](12-real-plan-walkthrough.md#разбор-1-отбор-документов-по-дате-key-lookup-и-динамический-seek); [П3 — узкий индекс вместо кластерного](13-joins-real-plans.md#узкий-индекс-вместо-кластерного); [кейс 10](11-case-studies.md#кейс-10-первый-запуск-медленный-повторный-быстрый).
+
 ---
 
 ## 1. Страница и экстент

@@ -1,6 +1,6 @@
-# 11. Расследования: кейсы по метрикам Profiler и Extended Events
+# П1. Расследования: кейсы по метрикам Profiler и Extended Events
 
-[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разборы реальных планов →](12-real-plan-walkthrough.md)
+[← Раздел 9](09-practice.md) · [Оглавление](../README.md) · [Разборы реальных планов →](12-real-plan-walkthrough.md)
 
 Практикум: «запрос тормозит — как разобраться». Каждый кейс построен одинаково:
 - **жалоба** и **запрос**;
@@ -382,7 +382,7 @@ SELECT * FROM dbo.Orders WHERE OrderDate >= '20200101';
 - 2 миллиона страниц ради 150 строк — тяжёлый план, который параллелизм просто «размазал» по ядрам.
 - Пока он работает, остальным запросам не хватает CPU.
 
-**Как подтвердить.** В плане операторы Parallelism (Gather/Repartition Streams), `Degree of Parallelism` на SELECT ([вопрос 52](05-plans-operators.md#52-параллелизм)). Как читать счётчики по потокам — в [разделе 15](15-parallelism-real-plan.md). На сервере в это время ожидания `CXPACKET` / `CXCONSUMER`, у других сессий — `SOS_SCHEDULER_YIELD`.
+**Как подтвердить.** В плане операторы Parallelism (Gather/Repartition Streams), `Degree of Parallelism` на SELECT ([вопрос 52](05-plans-operators.md#52-параллелизм)). Как читать счётчики по потокам — в [практикуме П5](15-parallelism-real-plan.md). На сервере в это время ожидания `CXPACKET` / `CXCONSUMER`, у других сессий — `SOS_SCHEDULER_YIELD`.
 
 **Причина.** Высокая стоимость плана из-за больших чтений: нет индекса, несаргабельное условие, неудачное соединение. Параллелизм — следствие, а не причина.
 
@@ -585,4 +585,4 @@ WHERE %%lockres%% = N'(75cdabf133d3)';
 
 ---
 
-[← Шпаргалка](10-cheatsheet.md) · [Оглавление](../README.md) · [Разборы реальных планов →](12-real-plan-walkthrough.md)
+[← Раздел 9](09-practice.md) · [Оглавление](../README.md) · [Разборы реальных планов →](12-real-plan-walkthrough.md)

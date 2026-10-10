@@ -1,4 +1,4 @@
-# 13. Соединения на реальных планах 1С: Nested Loops, Hash Match, Merge Join
+# П3. Соединения на реальных планах 1С: Nested Loops, Hash Match, Merge Join
 
 [← Разборы реальных планов](12-real-plan-walkthrough.md) · [Оглавление](../README.md) · [RLS на реальных планах →](14-rls-real-plans.md)
 

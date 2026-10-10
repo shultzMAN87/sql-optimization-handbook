@@ -4,6 +4,8 @@
 
 Вопросы 61–67. Практика: [`12_extended_events_long_queries.sql`](../sql/12_extended_events_long_queries.sql), [`09_waits_and_blocking.sql`](../sql/09_waits_and_blocking.sql).
 
+**Связанные разборы:** [П1 — метод расследования и карта сигнатур](11-case-studies.md#метод-расследования-пять-шагов); [кейс 4](11-case-studies.md#кейс-4-запрос-висит-35-секунд-не-потребляя-ресурсов), [кейс 12](11-case-studies.md#кейс-12-1с-расследование-возможных-блокировок).
+
 ---
 
 ## 61. SQL Server Profiler: для чего он и что выбрать для поиска долгих запросов

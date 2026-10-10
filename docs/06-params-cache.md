@@ -4,6 +4,8 @@
 
 Вопросы 56–60. Практика: [`08_parameter_sniffing_demo.sql`](../sql/08_parameter_sniffing_demo.sql), [`07_plan_cache_top_queries.sql`](../sql/07_plan_cache_top_queries.sql), [`05_query_store_practice.sql`](../sql/05_query_store_practice.sql) (сначала выполните [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql): он создаёт базу WarningsDemo).
 
+**Связанные разборы:** [кейс 3](11-case-studies.md#кейс-3-один-и-тот-же-запрос-то-мгновенно-то-минуты); [П2 — где ещё лежит план](12-real-plan-walkthrough.md#8-где-ещё-лежит-этот-план).
+
 ---
 
 ## 56. Parameter sniffing
