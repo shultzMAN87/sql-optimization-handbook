@@ -1,0 +1,50 @@
+<deadlock-list>
+ <deadlock victim="process24490075468">
+  <process-list>
+   <process id="process24490075468" taskpriority="0" logused="0" waitresource="KEY: 11:72057594052935680 (05c91ec5daa6)" waittime="5606" ownerId="4530971" transactionname="user_transaction" lasttranstarted="2026-10-11T11:17:24.503" XDES="0x24483eb8428" lockMode="RangeS-U" schedulerid="5" kpid="16552" status="suspended" spid="61" sbid="0" ecid="0" priority="0" trancount="1" lastbatchstarted="2026-10-11T11:17:39.520" lastbatchcompleted="2026-10-11T11:17:24.510" lastattention="1900-01-01T00:00:00.510" clientapp="1CV83 Server" hostname="DESKTOP-MNLTOU4" hostpid="18468" loginname="sa" isolationlevel="repeatable read (3)" xactid="4530971" currentdb="11" currentdbname="Test_1C_Opt" lockTimeout="20000" clientoption1="671221856" clientoption2="128056">
+    <executionStack>
+     <frame procname="adhoc" line="1" stmtstart="34" stmtend="212" sqlhandle="0x020000000ae33b22b86982b7f2a6029eea14e60c2ce9fdf70000000000000000000000000000000000000000">
+unknown     </frame>
+     <frame procname="unknown" line="1" sqlhandle="0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000">
+unknown     </frame>
+    </executionStack>
+    <inputbuf>
+(@P1 numeric(10))SELECT
+T1._Fld56
+FROM dbo._InfoRg53 T1 WITH(SERIALIZABLE, UPDLOCK)
+WHERE (T1._Fld54 = @P1)    </inputbuf>
+   </process>
+   <process id="process2449005d468" taskpriority="0" logused="0" waitresource="KEY: 11:72057594052935680 (bc498c599fe7)" waittime="1941" ownerId="4530999" transactionname="user_transaction" lasttranstarted="2026-10-11T11:17:28.180" XDES="0x244901bc428" lockMode="RangeS-U" schedulerid="2" kpid="26512" status="suspended" spid="66" sbid="0" ecid="0" priority="0" trancount="1" lastbatchstarted="2026-10-11T11:17:43.187" lastbatchcompleted="2026-10-11T11:17:28.183" lastattention="1900-01-01T00:00:00.183" clientapp="1CV83 Server" hostname="DESKTOP-MNLTOU4" hostpid="18468" loginname="sa" isolationlevel="repeatable read (3)" xactid="4530999" currentdb="11" currentdbname="Test_1C_Opt" lockTimeout="20000" clientoption1="671221856" clientoption2="128056">
+    <executionStack>
+     <frame procname="adhoc" line="1" stmtstart="34" stmtend="212" sqlhandle="0x020000000ae33b22b86982b7f2a6029eea14e60c2ce9fdf70000000000000000000000000000000000000000">
+unknown     </frame>
+     <frame procname="unknown" line="1" sqlhandle="0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000">
+unknown     </frame>
+    </executionStack>
+    <inputbuf>
+(@P1 numeric(10))SELECT
+T1._Fld56
+FROM dbo._InfoRg53 T1 WITH(SERIALIZABLE, UPDLOCK)
+WHERE (T1._Fld54 = @P1)    </inputbuf>
+   </process>
+  </process-list>
+  <resource-list>
+   <keylock hobtid="72057594052935680" dbid="11" objectname="Test_1C_Opt.dbo._InfoRg53" indexname="_InfoRg53_1" id="lock2447563ff80" mode="RangeS-U" associatedObjectId="72057594052935680">
+    <owner-list>
+     <owner id="process2449005d468" mode="RangeS-U"/>
+    </owner-list>
+    <waiter-list>
+     <waiter id="process24490075468" mode="RangeS-U" requestType="wait"/>
+    </waiter-list>
+   </keylock>
+   <keylock hobtid="72057594052935680" dbid="11" objectname="Test_1C_Opt.dbo._InfoRg53" indexname="_InfoRg53_1" id="lock2442b85a900" mode="RangeS-U" associatedObjectId="72057594052935680">
+    <owner-list>
+     <owner id="process24490075468" mode="RangeS-U"/>
+    </owner-list>
+    <waiter-list>
+     <waiter id="process2449005d468" mode="RangeS-U" requestType="wait"/>
+    </waiter-list>
+   </keylock>
+  </resource-list>
+ </deadlock>
+</deadlock-list>

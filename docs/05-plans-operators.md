@@ -4,7 +4,7 @@
 
 Вопросы 40–55 и дополнительные 44а, 47а, 50а, 55а. Практика: [`01_scan_vs_seek_demo.sql`](../sql/01_scan_vs_seek_demo.sql), [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql), [`04_parallelism_demo.sql`](../sql/04_parallelism_demo.sql), блок 10 [`02_statistics_demo.sql`](../sql/02_statistics_demo.sql), [`13_order_by_group_by_demo.sql`](../sql/13_order_by_group_by_demo.sql), [`16_join_problems_demo.sql`](../sql/16_join_problems_demo.sql), [`19_seek_predicate_demo.sql`](../sql/19_seek_predicate_demo.sql), [`20_join_algorithms_demo.sql`](../sql/20_join_algorithms_demo.sql), [`21_missing_index_demo.sql`](../sql/21_missing_index_demo.sql).
 
-**Связанные разборы:** [П2, разбор 1 — Key Lookup и динамический Seek](12-real-plan-walkthrough.md#разбор-1-отбор-документов-по-дате-key-lookup-и-динамический-seek); [П2, разбор 2 — Missing Index](12-real-plan-walkthrough.md#разбор-2-missing-index-где-искать-подсказку-и-почему-её-может-не-быть); [П3 — соединения на реальных планах](13-joins-real-plans.md); [П5 — параллелизм](15-parallelism-real-plan.md); [кейс 1](11-case-studies.md#кейс-1-вложенный-запрос-коррелированный-подзапрос-выполняется-на-каждую-строку), [кейс 2](11-case-studies.md#кейс-2-несаргабельное-условие-читаем-всю-таблицу-ради-40-строк), [кейс 5](11-case-studies.md#кейс-5-select-который-пишет-spill-в-tempdb), [кейс 8](11-case-studies.md#кейс-8-cpu-больше-duration-тяжёлый-параллельный-отчёт).
+**Связанные разборы:** [П2, разбор 1 — Key Lookup и динамический Seek](12-real-plan-walkthrough.md#разбор-1-отбор-документов-по-дате-key-lookup-и-динамический-seek); [П2, разбор 2 — Missing Index](12-real-plan-walkthrough.md#разбор-2-missing-index-где-искать-подсказку-и-почему-её-может-не-быть); [П3 — соединения на реальных планах](13-joins-real-plans.md); [П5 — параллелизм](15-parallelism-real-plan.md); [П6 — Key Lookup и точка перелома при sniffing](16-sniffing-real-plans.md); [П8 — spill и memory grant](18-spill-real-plans.md); [кейс 1](11-case-studies.md#кейс-1-вложенный-запрос-коррелированный-подзапрос-выполняется-на-каждую-строку), [кейс 2](11-case-studies.md#кейс-2-несаргабельное-условие-читаем-всю-таблицу-ради-40-строк), [кейс 5](11-case-studies.md#кейс-5-select-который-пишет-spill-в-tempdb), [кейс 8](11-case-studies.md#кейс-8-cpu-больше-duration-тяжёлый-параллельный-отчёт).
 
 ---
 
@@ -76,7 +76,7 @@ flowchart RL
 - главный фильтр стоит в Predicate, а не в Seek Predicates;
 - seek на внутренней стороне NL выполнился миллион раз.
 
-**Точка перелома (tipping point).** Стоимость «Seek + Lookup» растёт примерно как 3 × N чтений, а скан стоит постоянно, как число страниц таблицы. Для таблицы на 1 млн строк и 12 500 страниц перелом наступает уже около **4 000 строк (0,4%)**. Для узких таблиц доля выше, для широких ниже, поэтому универсального процента нет.
+**Точка перелома (tipping point).** Стоимость «Seek + Lookup» растёт примерно как 3 × N чтений, а скан стоит постоянно, как число страниц таблицы. Для таблицы на 1 млн строк и 12 500 страниц перелом наступает уже около **4 000 строк (0,4%)**. Для узких таблиц доля выше, для широких ниже, поэтому универсального процента нет. Расчёт перелома по оценкам реальных планов 1С (≈ 1 100 строк, 0,22% узкой таблицы на 500 000 строк) и цена ошибки (449 952 Key Lookup, в 337 раз больше чтений, чем скан) — в [практикуме П6](16-sniffing-real-plans.md#7-точка-перелома-по-модели-стоимости).
 
 ![Tipping point](../images/tipping_point.png)
 
@@ -673,7 +673,7 @@ flowchart TD
 - индекс, который отдаёт данные уже отсортированными и убирает Sort;
 - memory grant feedback (2017 batch mode, 2019 row mode, 2022 — сохранение в Query Store).
 
-Воспроизведение: блок B [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql).
+Воспроизведение: блок B [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql). На реальном запросе 1С: spill после sniffing, `SortSpillDetails`, обратная связь по памяти и почему исправление памяти не ускорило запрос — [практикум П8](18-spill-real-plans.md).
 
 ---
 
@@ -694,7 +694,7 @@ flowchart TD
 
 **Средства:**
 - исправить оценку;
-- **Memory Grant Feedback**: корректирует грант между выполнениями;
+- **Memory Grant Feedback**: корректирует грант между выполнениями (в обе стороны — на реальных планах в [П8](18-spill-real-plans.md#обратная-связь-увеличила-выдачу-памяти-a3));
 - хинты `MIN_GRANT_PERCENT` / `MAX_GRANT_PERCENT`;
 - ограничения Resource Governor.
 

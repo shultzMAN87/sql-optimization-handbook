@@ -4,7 +4,7 @@
 
 Вопросы 56–60. Практика: [`08_parameter_sniffing_demo.sql`](../sql/08_parameter_sniffing_demo.sql), [`07_plan_cache_top_queries.sql`](../sql/07_plan_cache_top_queries.sql), [`05_query_store_practice.sql`](../sql/05_query_store_practice.sql) (сначала выполните [`03_plan_warnings_demo.sql`](../sql/03_plan_warnings_demo.sql): он создаёт базу WarningsDemo).
 
-**Связанные разборы:** [кейс 3](11-case-studies.md#кейс-3-один-и-тот-же-запрос-то-мгновенно-то-минуты); [П2 — где ещё лежит план](12-real-plan-walkthrough.md#8-где-ещё-лежит-этот-план).
+**Связанные разборы:** [П6 — sniffing на реальном регистре 1С](16-sniffing-real-plans.md); [кейс 3](11-case-studies.md#кейс-3-один-и-тот-же-запрос-то-мгновенно-то-минуты); [П2 — где ещё лежит план](12-real-plan-walkthrough.md#8-где-ещё-лежит-этот-план).
 
 ---
 
@@ -97,11 +97,13 @@ SELECT … WHERE ClientID = @c;
 
 Хинт в запрос 1С не вставить. Что можно сделать: дополнительный покрывающий индекс (КОРП), чтобы убрать развилку на Key Lookup; Query Store (закрепить план или подсказку `RECOMPILE`); PSP-оптимизация SQL Server 2022 ([вопрос 58](#58-способы-борьбы-плюсы-и-минусы)).
 
+Тот же сценарий на реальном регистре сведений с перекосом 90 / 0,1% — с фактическими планами, цифрами чтений и расчётом точки перелома — в [практикуме П6](16-sniffing-real-plans.md).
+
 ---
 
 ## 57. Диагностика
 
-1. **Parameter Compiled Value и Runtime Value.** Фактический план → корневой SELECT → `Parameter List`. **Compiled Value** — значение, под которое план построен, **Runtime Value** — значение текущего выполнения (есть только в фактическом плане). В XML это `<ColumnReference Column="@ClientID" ParameterCompiledValue="(7)" ParameterRuntimeValue="(1)"/>`. Значения разные, и есть огромное расхождение `Estimated` и `Actual` rows — это классика.
+1. **Parameter Compiled Value и Runtime Value.** Фактический план → корневой SELECT → `Parameter List`. **Compiled Value** — значение, под которое план построен, **Runtime Value** — значение текущего выполнения (есть только в фактическом плане). В XML это `<ColumnReference Column="@ClientID" ParameterCompiledValue="(7)" ParameterRuntimeValue="(1)"/>`. Значения разные, и есть огромное расхождение `Estimated` и `Actual` rows — это классика. Реальный пример из 1С — [П6, сценарий A](16-sniffing-real-plans.md#где-это-видно-в-ssms).
 2. **План из кэша** содержит только `ParameterCompiledValue`: он показывает, **под какое значение** план построен.
 3. **Разброс метрик одного плана в кэше:** `min_logical_reads` и `max_logical_reads`, `min/max_elapsed_time` в `sys.dm_exec_query_stats` отличаются на порядки (запрос 2 в [`07_plan_cache_top_queries.sql`](../sql/07_plan_cache_top_queries.sql)).
 4. **Query Store:** отчёты *Queries With High Variation* и *Regressed Queries*, на *Plan Summary* несколько plan_id у одного query_id.
