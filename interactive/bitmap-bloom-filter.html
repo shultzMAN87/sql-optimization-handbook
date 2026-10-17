@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bitmap и фильтр Блума в Hash Match — пошаговая визуализация</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#f6f7f9;--card:#ffffff;--soft:#eceef2;--text:#1c2024;--muted:#5d6570;--faint:#98a0aa;
+  --line:#d3d8df;--line-strong:#aab2bd;
+  --accent:#1f6fd1;--acc-bg:#e3eefc;
+  --ok-bg:#dff3e4;--ok-fg:#1c6b34;--ok-line:#3aa05a;
+  --warn-bg:#fcefd6;--warn-fg:#7a4f06;
+  --bad-bg:#fbe3e3;--bad-fg:#a32d2d;--danger:#c23b3b;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#15181c;--card:#1d2127;--soft:#262b32;--text:#e7eaee;--muted:#a3abb5;--faint:#6f7883;
+  --line:#343a43;--line-strong:#4f5763;
+  --accent:#5b9cf0;--acc-bg:#1b2c44;
+  --ok-bg:#17372a;--ok-fg:#8fdcaa;--ok-line:#4cb872;
+  --warn-bg:#3d2f12;--warn-fg:#f0c97a;
+  --bad-bg:#3b1d1d;--bad-fg:#f0a0a0;--danger:#ef7b7b;
+}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6}
+main{max-width:900px;margin:0 auto;padding:32px 16px 64px}
+h1{font-size:28px;font-weight:500;margin:0 0 8px}
+h2{font-size:20px;font-weight:500;margin:48px 0 6px}
+p.lead{color:var(--muted);margin:0 0 8px;max-width:72ch}
+.demo{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px;margin-top:14px}
+.ctrl{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+button{font:inherit;font-size:14px;color:var(--text);background:transparent;border:1px solid var(--line-strong);border-radius:8px;padding:6px 14px;cursor:pointer}
+button:hover{background:var(--soft)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input,select{font:inherit;font-size:14px;color:var(--text);background:var(--card);border:1px solid var(--line-strong);border-radius:8px;padding:6px 10px}
+.cnt{margin-left:auto;font-size:13px;color:var(--muted)}
+.info{background:var(--soft);border-radius:8px;padding:10px 12px;margin-bottom:12px;min-height:72px}
+.op{font-family:var(--mono);font-size:14px;font-weight:500;margin-bottom:4px}
+.txt{font-size:14px}
+.lt{font-size:12px;color:var(--muted);margin:14px 0 6px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}
+.bits{display:grid;gap:4px}
+.bit{height:36px;border:1px solid var(--line-strong);border-radius:6px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:var(--mono);font-size:14px;line-height:1.1}
+.bit small{font-size:10px;color:var(--faint);font-family:var(--sans)}
+.bit.on{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line);font-weight:500}
+.bit.look{outline:2px solid var(--accent);outline-offset:1px}
+.bit.zero{outline:2px solid var(--danger);outline-offset:1px;background:var(--bad-bg);color:var(--bad-fg)}
+.row{display:flex;gap:6px;align-items:center;font-family:var(--mono);font-size:13px;padding:4px 8px;border-radius:6px;border:1px solid var(--line);margin-bottom:4px;background:var(--card)}
+.row.cur{border:2px solid var(--accent)}
+.row.done{color:var(--faint)}
+.row.drop{background:var(--bad-bg);color:var(--bad-fg);border-color:transparent}
+.row.pass{background:var(--acc-bg)}
+.row.fp{background:var(--warn-bg);color:var(--warn-fg)}
+.row.res{background:var(--ok-bg);color:var(--ok-fg);border-color:transparent}
+.row .tag{margin-left:auto;font-family:var(--sans);font-size:12px}
+.bk{display:flex;gap:6px;align-items:center;margin-bottom:4px;font-size:13px}
+.bk .n{font-size:12px;color:var(--muted);min-width:70px}
+.bk .it{font-family:var(--mono);padding:3px 8px;border-radius:6px;background:var(--soft);border:1px solid var(--line)}
+.bk .it.hit{background:var(--ok-bg);color:var(--ok-fg);border-color:var(--ok-line)}
+.bk .it.miss{background:var(--bad-bg);color:var(--bad-fg);border-color:transparent}
+.bk.look .n{color:var(--accent);font-weight:500}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0 12px}
+.metric{background:var(--soft);border-radius:8px;padding:10px 12px}
+.metric div:first-child{font-size:13px;color:var(--muted)}
+.metric div:last-child{font-size:22px;font-weight:500}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted)}
+.sw{display:inline-block;width:16px;height:12px;border-radius:3px;margin:0 4px -2px 0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-family:var(--mono);font-size:12px;padding:3px 8px;border-radius:6px;background:var(--soft)}
+.chip span{color:var(--faint)}
+.err{font-size:13px;color:var(--danger);min-height:20px}
+.res-txt{font-size:14px;min-height:48px}
+.ok{color:var(--ok-fg)}.bad{color:var(--bad-fg)}.wrn{color:var(--warn-fg)}
+footer{margin-top:40px;font-size:13px;color:var(--faint)}
+</style>
+</head>
+<body>
+<main>
+<h1>Bitmap и фильтр Блума в Hash Match</h1>
+<p class="lead">Как параллельный Hash Match строит bitmap по ключам build-таблицы и как сканер второй таблицы отбрасывает строки без пары, ни разу не заглядывая в первую. Таблицы и поля — как в реальном плане 1С из методички (вопрос 45, подраздел «Bitmap»).</p>
+
+<h2>1. Пошаговый пример: build, probe-скан с bitmap, Hash Match</h2>
+<p class="lead">Build — <code>_Reference19017</code> (5 строк), probe — <code>_Reference10</code> (8 строк), условие <code>T2._Fld19019 = T1._Fld7420</code>. Для счёта в уме: бит = ключ mod 10, корзина хеш-таблицы = ключ mod 4.</p>
+<div class="demo" id="demo1">
+  <div class="ctrl"><button data-a="prev">← Назад</button><button data-a="next">Далее →</button><button data-a="reset">Сначала</button><span class="cnt"></span></div>
+  <div class="info"><div class="op"></div><div class="txt"></div></div>
+  <div class="lt">Bitmap1002 — 10 бит</div>
+  <div class="bits" id="d1bits" style="grid-template-columns:repeat(10,minmax(0,1fr))"></div>
+  <div class="grid3" style="margin-top:14px">
+    <div><div class="lt">Build: _Reference19017 (_Fld19019 · _Fld22685)</div><div id="d1build"></div>
+         <div class="lt">Хеш-таблица (ключ mod 4)</div><div id="d1hash"></div></div>
+    <div><div class="lt">Probe: _Reference10 (_IDRRef · _Fld7420)</div><div id="d1probe"></div></div>
+    <div><div class="lt">Результат соединения</div><div id="d1res"></div></div>
+  </div>
+  <div class="metrics">
+    <div class="metric"><div>Прочитано строк T1</div><div data-m="read"></div></div>
+    <div class="metric"><div>Отброшено bitmap</div><div data-m="drop"></div></div>
+    <div class="metric"><div>Дошло до Hash Match</div><div data-m="pass"></div></div>
+    <div class="metric"><div>Строк в результате</div><div data-m="out"></div></div>
+  </div>
+  <div class="legend">
+    <span><span class="sw" style="background:var(--ok-bg);border:1px solid var(--ok-line)"></span>взведённый бит / найдена пара</span>
+    <span><span class="sw" style="background:var(--bad-bg)"></span>отброшено</span>
+    <span><span class="sw" style="background:var(--warn-bg)"></span>ложное срабатывание</span>
+    <span><span class="sw" style="border:2px solid var(--accent)"></span>проверяется сейчас</span>
+  </div>
+</div>
+
+<h2>2. Песочница: фильтр Блума с k хеш-функциями</h2>
+<p class="lead">Добавляйте ключи build-стороны и проверяйте ключи probe-стороны. Нулевой бит — ключа точно нет. Все биты взведены — «возможно есть»: так и появляются ложные срабатывания. Прогон 1000 случайных ключей сравнивает фактическую долю ложных срабатываний с формулой (1 − e<sup>−kn/m</sup>)<sup>k</sup>.</p>
+<div class="demo" id="demo2">
+  <div class="ctrl">
+    <label>m, бит <select id="sm"><option>16</option><option selected>32</option><option>64</option><option>128</option></select></label>
+    <label>k, функций <select id="sk"><option>1</option><option selected>2</option><option>3</option><option>4</option></select></label>
+    <span class="cnt" id="sfill"></span>
+  </div>
+  <div class="bits" id="sbits"></div>
+  <div class="grid3" style="margin-top:16px">
+    <div>
+      <div class="lt">Build: добавить ключ</div>
+      <div class="ctrl" style="margin:0"><input id="sin" placeholder="Например, 105" style="flex:1;min-width:0"><button id="sadd">Добавить</button></div>
+      <div class="err" id="serr1"></div>
+      <div class="ctrl" style="margin:0"><button id="srnd">+5 случайных</button><button id="sclr">Очистить</button></div>
+      <div class="chips" id="schips"></div>
+    </div>
+    <div>
+      <div class="lt">Probe: проверить ключ</div>
+      <div class="ctrl" style="margin:0"><input id="sprobe" placeholder="Ключ для проверки" style="flex:1;min-width:0"><button id="schk">Проверить</button></div>
+      <div class="err" id="serr2"></div>
+      <div class="res-txt" id="sres"></div>
+      <button id="smany" style="margin-top:8px">Прогнать 1000 случайных ключей</button>
+      <div class="txt" id="sstat" style="margin-top:8px;color:var(--muted)"></div>
+    </div>
+  </div>
+</div>
+
+<footer>Упрощённая модель для обучения. Настоящие хеш-функции, размер bitmap и число функций в SQL Server не документированы; здесь вместо них остатки от деления (раздел 1) и простые строковые хеши (раздел 2). Принцип от этого не меняется: нулевой бит — пары точно нет, все единицы — пара возможна, окончательно проверяет Hash Match.</footer>
+</main>
+
+<script>
+(function(){
+  const B=[[12,'Альфа'],[25,'Бета'],[31,'Гамма'],[47,'Дельта'],[25,'Бета-2']];
+  const P=[['r1',12],['r2',40],['r3',25],['r4',63],['r5',77],['r6',31],['r7',18],['r8',94]];
+  const keysB=B.map(b=>b[0]);
+  const steps=[];
+  steps.push({ph:0,i:-1,op:'Старт',txt:'Bitmap пуст, хеш-таблица пуста. Hash Match начинает build-фазу: читает верхний вход _Reference19017 целиком. Вторая таблица пока не читается вовсе.'});
+  B.forEach((b,i)=>steps.push({ph:1,i,op:'Build: строка '+b[0]+' · '+b[1],txt:'Хеш для bitmap: '+b[0]+' mod 10 = '+(b[0]%10)+' → взводим бит '+(b[0]%10)+'. Хеш для хеш-таблицы: '+b[0]+' mod 4 = '+(b[0]%4)+' → строка кладётся в корзину '+(b[0]%4)+'.'}));
+  steps.push({ph:2,i:-1,op:'Build закончен',txt:'Bitmap готов и больше не меняется: взведены биты 1, 2, 5, 7. Он передаётся сканеру _Reference10 как предикат PROBE(Bitmap1002, _Fld7420). К _Reference19017 больше никто не вернётся.'});
+  P.forEach((p,i)=>{const b=p[1]%10,on=keysB.some(k=>k%10===b),fp=on&&!keysB.includes(p[1]);
+    steps.push({ph:3,i,op:'Probe-скан: '+p[0]+' · '+p[1],txt:p[1]+' mod 10 = '+b+', бит '+b+' = '+(on?1:0)+'. '+(on?(fp?'Бит взведён ключом 47, а не 77 — bitmap этого не знает. Строка идёт дальше: ложное срабатывание.':'Пара возможна, строка идёт в Hash Match.'):'Нулевой бит — пары точно нет. Строка выброшена прямо в скане, в T2 сканер не ходил.')});});
+  const passed=P.filter(p=>keysB.some(k=>k%10===p[1]%10));
+  passed.forEach((p,i)=>{const c=B.filter(b=>b[0]%4===p[1]%4),h=c.filter(b=>b[0]===p[1]);
+    steps.push({ph:4,i,op:'Hash Match: '+p[0]+' · '+p[1],txt:p[1]+' mod 4 = '+(p[1]%4)+' → корзина '+(p[1]%4)+': '+c.map(x=>x[0]).join(', ')+'. Сравниваем значения (Probe Residual): '+(h.length?'совпало '+h.length+' — '+h.length+' стр. в результат.':'ни одного совпадения — ложное срабатывание отсеяно.')});});
+  steps.push({ph:5,i:-1,op:'Готово',txt:'Прочитано 8 строк T1, bitmap выбросил 4, до Hash Match дошли 4, в результате 4 строки: r5 отсеян точным сравнением, r3 нашёл две пары. На реальном плане то же: из 1 323 247 строк до Hash Match дошли 85 448.'});
+
+  const root=document.getElementById('demo1'),q=s=>root.querySelector(s);
+  let i=0;
+  function draw(){
+    const s=steps[i];
+    q('.cnt').textContent='Шаг '+(i+1)+' из '+steps.length;
+    q('.op').textContent=s.op; q('.txt').textContent=s.txt;
+    const nb=s.ph===1?s.i+1:(s.ph>=2?5:0);
+    const bits=Array(10).fill(0); B.slice(0,nb).forEach(b=>bits[b[0]%10]=1);
+    let look=-1; if(s.ph===1)look=B[s.i][0]%10; if(s.ph===3)look=P[s.i][1]%10;
+    document.getElementById('d1bits').innerHTML=bits.map((v,j)=>'<div class="bit'+(v?' on':'')+(j===look?(v?' look':' zero'):'')+'">'+v+'<small>'+j+'</small></div>').join('');
+    document.getElementById('d1build').innerHTML=B.map((b,j)=>'<div class="row'+(s.ph===1&&j===s.i?' cur':(j<nb?' done':''))+'">'+b[0]+' · '+b[1]+'</div>').join('');
+    let hb=-1,cmp=null; if(s.ph===4){cmp=passed[s.i];hb=cmp[1]%4;}
+    let h='';for(let k=0;k<4;k++){const it=B.slice(0,nb).filter(b=>b[0]%4===k);
+      h+='<div class="bk'+(k===hb?' look':'')+'"><span class="n">корзина '+k+'</span>'+(it.length?it.map(b=>'<span class="it'+(k===hb?(b[0]===cmp[1]?' hit':' miss'):'')+'">'+b[0]+'</span>').join(''):'<span style="color:var(--faint);font-size:12px">пусто</span>')+'</div>';}
+    document.getElementById('d1hash').innerHTML=h;
+    const nr=s.ph===3?s.i+1:(s.ph>3?8:0);
+    document.getElementById('d1probe').innerHTML=P.map((p,j)=>{let c='row',t='';
+      if(j<nr){const on=keysB.some(k=>k%10===p[1]%10),fp=on&&!keysB.includes(p[1]);c+=on?(fp?' fp':' pass'):' drop';t=on?(fp?'дальше (ложно)':'дальше'):'выброшена';}
+      if(s.ph===3&&j===s.i)c+=' cur';
+      if(s.ph===4&&p[0]===cmp[0])c+=' cur';
+      return '<div class="'+c+'">'+p[0]+' · '+p[1]+'<span class="tag">'+t+'</span></div>';}).join('');
+    const np=s.ph===4?s.i+1:(s.ph>4?passed.length:0);const out=[];
+    passed.slice(0,np).forEach(p=>B.filter(b=>b[0]===p[1]).forEach(b=>out.push(p[0]+' · Товар '+p[0].slice(1)+' · '+b[1])));
+    document.getElementById('d1res').innerHTML=out.length?out.map(r=>'<div class="row res">'+r+'</div>').join(''):'<div style="color:var(--faint);font-size:13px">Hash Match ещё не выдал ни одной строки</div>';
+    const dropped=P.slice(0,nr).filter(p=>!keysB.some(k=>k%10===p[1]%10)).length;
+    root.querySelector('[data-m="read"]').textContent=nr;
+    root.querySelector('[data-m="drop"]').textContent=dropped;
+    root.querySelector('[data-m="pass"]').textContent=nr-dropped;
+    root.querySelector('[data-m="out"]').textContent=out.length;
+  }
+  root.querySelector('[data-a="prev"]').onclick=()=>{if(i>0){i--;draw();}};
+  root.querySelector('[data-a="next"]').onclick=()=>{if(i<steps.length-1){i++;draw();}};
+  root.querySelector('[data-a="reset"]').onclick=()=>{i=0;draw();};
+  draw();
+})();
+
+(function(){
+  let M=32,K=2,bits=[],owners=[],keys=[];
+  const $=id=>document.getElementById(id);
+  function h(s,seed){let x=2166136261^seed;for(let i=0;i<s.length;i++){x^=s.charCodeAt(i);x=Math.imul(x,16777619);}x^=x>>>13;x=Math.imul(x,0x5bd1e995);x^=x>>>15;return (x>>>0)%M;}
+  const SEEDS=[0x9e3779b9,0x85ebca6b,0xc2b2ae35,0x27d4eb2f];
+  const hs=k=>SEEDS.slice(0,K).map(sd=>h(String(k),sd));
+  function reset(){bits=Array(M).fill(0);owners=Array.from({length:M},()=>[]);
+    const old=keys;keys=[];old.forEach(put);}
+  function put(k){if(keys.includes(k))return false;keys.push(k);hs(k).forEach(i=>{bits[i]=1;if(!owners[i].includes(k))owners[i].push(k);});return true;}
+  function render(mark){
+    const n=bits.filter(Boolean).length;
+    $('sbits').style.gridTemplateColumns='repeat('+Math.min(M,16)+',minmax(0,1fr))';
+    $('sbits').innerHTML=bits.map((v,i)=>'<div class="bit'+(v?' on':'')+(mark&&mark.includes(i)?(v?' look':' zero'):'')+'" title="'+(owners[i].length?'Взвели: '+owners[i].join(', '):'Не взведён')+'">'+v+'<small>'+i+'</small></div>').join('');
+    $('sfill').textContent='Ключей '+keys.length+' · взведено '+n+' из '+M+' ('+Math.round(n/M*100)+' %)';
+    $('schips').innerHTML=keys.map(k=>'<span class="chip">'+k+' <span>→ '+hs(k).join(', ')+'</span></span>').join('');
+  }
+  function addKey(){const v=$('sin').value.trim();if(!v){$('serr1').textContent='Введите ключ';return;}
+    if(!put(v)){$('serr1').textContent='Такой ключ уже добавлен';return;}$('serr1').textContent='';$('sin').value='';render(hs(v));}
+  function probe(){const v=$('sprobe').value.trim();if(!v){$('serr2').textContent='Введите ключ';return;}$('serr2').textContent='';
+    const p=hs(v),pass=p.every(i=>bits[i]),real=keys.includes(v);render(p);
+    let t='Биты '+p.map(i=>i+' = '+bits[i]).join(', ')+'.<br>';
+    if(!pass)t+='<span class="bad">Есть нулевой бит: ключа точно нет, строка выброшена в скане.</span>';
+    else if(real)t+='<span class="ok">Все биты взведены, и ключ действительно есть: Hash Match найдёт пару.</span>';
+    else t+='<span class="wrn">Все биты взведены, но ключа нет — ложное срабатывание. Биты взвели: '+[...new Set(p.flatMap(i=>owners[i]))].join(', ')+'. Отсеет точное сравнение в Hash Match.</span>';
+    $('sres').innerHTML=t;}
+  function many(){const N=1000;let pass=0,fp=0;for(let j=0;j<N;j++){const k='p'+Math.random().toString(36).slice(2,9);if(hs(k).every(i=>bits[i])){pass++;if(!keys.includes(k))fp++;}}
+    const n=keys.length,est=n?Math.pow(1-Math.exp(-K*n/M),K):0;
+    $('sstat').innerHTML='Отброшено bitmap: '+(N-pass)+' из '+N+'<br>Ложных срабатываний: '+fp+' ('+(fp/N*100).toFixed(1).replace('.',',')+' %)<br>Формула при n = '+n+', m = '+M+', k = '+K+': '+(est*100).toFixed(1).replace('.',',')+' %';}
+  $('sadd').onclick=addKey;$('schk').onclick=probe;$('smany').onclick=many;
+  $('sin').addEventListener('keydown',e=>{if(e.key==='Enter')addKey();});
+  $('sprobe').addEventListener('keydown',e=>{if(e.key==='Enter')probe();});
+  $('sin').addEventListener('input',()=>$('serr1').textContent='');
+  $('sprobe').addEventListener('input',()=>$('serr2').textContent='');
+  $('srnd').onclick=()=>{let a=0,g=0;while(a<5&&g<1000){g++;if(put(String(100+Math.floor(Math.random()*900))))a++;}render();};
+  $('sclr').onclick=()=>{keys=[];reset();$('sres').innerHTML='';$('sstat').innerHTML='';render();};
+  $('sm').onchange=e=>{M=+e.target.value;reset();$('sres').innerHTML='';$('sstat').innerHTML='';render();};
+  $('sk').onchange=e=>{K=+e.target.value;reset();$('sres').innerHTML='';$('sstat').innerHTML='';render();};
+  reset();['105','219','347','512'].forEach(put);render();
+})();
+</script>
+</body>
+</html>
