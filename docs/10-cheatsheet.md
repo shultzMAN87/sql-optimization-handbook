@@ -1,6 +1,6 @@
 # Шпаргалка: 83 ответа одной-двумя фразами
 
-[← П10](20-statistics-1c-real-walkthrough.md) · [Оглавление](../README.md)
+[← П10](20-statistics-1c-real-walkthrough.md) · [Оглавление](../README.md) · [Памятка →](21-plan-reading-memo.md)
 
 Для повторения перед аттестацией: по одной-две фразы на вопрос. Подробный ответ — по ссылке на раздел, реальные планы — в практикуме П1–П9 ([тематический указатель](../README.md#тематический-указатель)).
 
@@ -118,4 +118,4 @@
 
 ---
 
-[← П10](20-statistics-1c-real-walkthrough.md) · [Оглавление](../README.md)
+[← П10](20-statistics-1c-real-walkthrough.md) · [Оглавление](../README.md) · [Памятка →](21-plan-reading-memo.md)
